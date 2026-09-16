@@ -2,7 +2,8 @@
 
 角色：
   屋主端  /owner   用 OWNER_PASSWORD 登入，管理房間、確認收款
-  房客端  /tenant  選房間 → 輸入房間代碼綁定或登入 → 查看資料、回報繳費
+  房客端  /tenant  選空房自行綁定（自設四位數密碼）→ 查看資料、回報繳費
+  房東可以確認新房客、重設密碼、解除綁定（退租）
 """
 import hmac
 import os
@@ -12,17 +13,28 @@ from datetime import date, datetime
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy.exc import IntegrityError
 
 # ---------------------------------------------------------------- 設定
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY") or "dev-only-change-me"
 app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 90  # 登入記住 90 天
 
-db_url = os.environ.get("DATABASE_URL", "sqlite:///rent.db")
+db_url = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+if not db_url:
+    if ON_VERCEL:
+        # Vercel 的檔案系統不能保存資料，一定要接 Neon 等外部資料庫
+        raise RuntimeError("請在 Vercel 安裝 Neon 並設定 DATABASE_URL")
+    db_url = "sqlite:///rent.db"
 if db_url.startswith("postgres://"):  # 部分服務給的是舊格式
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True, "pool_recycle": 280}
+if ON_VERCEL:
+    app.config["SESSION_COOKIE_SECURE"] = True
 
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "admin")
 MAX_ATTEMPTS = 5
@@ -44,7 +56,6 @@ class Room(db.Model):
     rent = db.Column(db.Integer, default=0)            # 月租
     deposit_months = db.Column(db.Integer, default=2)  # 押金月數
     meter_start = db.Column(db.Integer, default=0)     # 入住時電表度數
-    code = db.Column(db.String(4), nullable=False)     # 房間代碼（綁定與登入用）
     failed = db.Column(db.Integer, default=0)
     locked = db.Column(db.Boolean, default=False)
 
@@ -66,6 +77,16 @@ class Tenant(db.Model):
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     moved_out_at = db.Column(db.DateTime)
+    pin_hash = db.Column(db.String(255), nullable=False)  # 房客自設的四位數密碼（只存雜湊）
+    pin_ver = db.Column(db.Integer, default=1)            # 重設密碼後讓舊登入失效
+    verified = db.Column(db.Boolean, default=False)       # 房東是否已核對
+
+    def set_pin(self, pin):
+        self.pin_hash = generate_password_hash(pin)
+        self.pin_ver = (self.pin_ver or 0) + 1
+
+    def check_pin(self, pin):
+        return check_password_hash(self.pin_hash, pin)
 
     @property
     def due_day(self):
@@ -124,10 +145,13 @@ def new_code():
 def init_db():
     db.create_all()
     if not Room.query.first():
-        for i, (b, n) in enumerate(DEFAULT_ROOMS):
-            db.session.add(Room(building=b, name=n, sort=i, code=new_code()))
-        set_setting("elec_rate", "5")
-        db.session.commit()
+        try:
+            for i, (b, n) in enumerate(DEFAULT_ROOMS):
+                db.session.add(Room(building=b, name=n, sort=i))
+            set_setting("elec_rate", "5")
+            db.session.commit()
+        except IntegrityError:  # 同時有兩個執行個體在建立資料時
+            db.session.rollback()
 
 
 with app.app_context():
@@ -147,6 +171,20 @@ def to_date(v):
         return datetime.strptime(v, "%Y-%m-%d").date()
     except (TypeError, ValueError):
         return None
+
+
+WEAK_PINS = {"0000", "1234", "4321", "1111", "2222", "3333", "4444", "5555",
+             "6666", "7777", "8888", "9999", "1212", "0123", "9876"}
+
+
+def pin_problem(pin, pin2):
+    if not (pin.isdigit() and len(pin) == 4):
+        return "密碼要是四位數字。"
+    if pin != pin2:
+        return "兩次輸入的密碼不一樣。"
+    if pin in WEAK_PINS:
+        return "這組密碼太容易被猜到，請換一組。"
+    return None
 
 
 def this_period():
@@ -202,11 +240,12 @@ def current_room():
 
 def tenant_required():
     room = current_room()
-    if not room or not room.tenant or room.tenant.id != session.get("tenant_id"):
-        session.pop("room_id", None)
-        session.pop("tenant_id", None)
+    t = room.tenant if room else None
+    if not t or t.id != session.get("tenant_id") or t.pin_ver != session.get("pin_ver"):
+        for k in ("room_id", "tenant_id", "pin_ver"):
+            session.pop(k, None)
         return None, None
-    return room, room.tenant
+    return room, t
 
 
 @app.route("/tenant")
@@ -215,17 +254,17 @@ def tenant_rooms():
     groups = {}
     for r in rooms:
         groups.setdefault(r.building, []).append(r)
-    return render_template("tenant_rooms.html", groups=groups, mine=current_room())
+    return render_template("tenant_rooms.html", groups=groups, mine=tenant_required()[0])
 
 
 @app.route("/tenant/room/<int:rid>", methods=["GET", "POST"])
 def tenant_room(rid):
     room = db.get_or_404(Room, rid)
-    mine = current_room()
+    mine = tenant_required()[0]
     if mine and mine.id != room.id:
         flash(f"這台裝置已綁定 {mine.name}，要換房間請先登出。", "warn")
         return redirect(url_for("tenant_rooms"))
-    if mine and mine.id == room.id and tenant_required()[0]:
+    if mine and mine.id == room.id:
         return redirect(url_for("tenant_home"))
 
     tenant = room.tenant
@@ -233,29 +272,35 @@ def tenant_room(rid):
     error = None
 
     if request.method == "POST":
-        if room.locked:
-            error = "這間房輸入錯誤太多次，已暫停使用，請聯絡房東解鎖。"
-        elif not hmac.compare_digest(request.form.get("code", "").strip(), room.code):
+        f = request.form
+        pin = f.get("pin", "").strip()
+        if mode == "bind":
+            name = f.get("name", "").strip()
+            checkin = to_date(f.get("checkin"))
+            error = pin_problem(pin, f.get("pin2", "").strip())
+            if not name or not checkin:
+                error = "請填寫姓名和入住日期。"
+            if not error and room.tenant:  # 剛好被別人搶先綁定
+                error = "這間房剛剛已被綁定，請重新選擇。"
+            if not error:
+                tenant = Tenant(room_id=room.id, name=name, checkin=checkin,
+                                phone=f.get("phone", "").strip())
+                tenant.set_pin(pin)
+                db.session.add(tenant)
+                room.failed, room.locked = 0, False
+                db.session.commit()
+                return _login_tenant(room, tenant, "綁定完成，這間房已顯示為有房客。請記住你的密碼。")
+        elif room.locked:
+            error = "密碼錯誤太多次，這間房已暫停登入，請聯絡房東解鎖。"
+        elif not tenant.check_pin(pin):
             room.failed = (room.failed or 0) + 1
             left = MAX_ATTEMPTS - room.failed
             if left <= 0:
                 room.locked = True
-                error = "錯誤太多次，這間房已暫停使用，請聯絡房東解鎖。"
+                error = "錯誤太多次，這間房已暫停登入，請聯絡房東解鎖。"
             else:
-                error = f"房間代碼不對，還可以再試 {left} 次。"
+                error = f"密碼不對，還可以再試 {left} 次。"
             db.session.commit()
-        elif mode == "bind":
-            name = request.form.get("name", "").strip()
-            checkin = to_date(request.form.get("checkin"))
-            if not name or not checkin:
-                error = "請填寫姓名和入住日期。"
-            else:
-                tenant = Tenant(room_id=room.id, name=name, checkin=checkin,
-                                phone=request.form.get("phone", "").strip())
-                db.session.add(tenant)
-                room.failed = 0
-                db.session.commit()
-                return _login_tenant(room, tenant, "綁定完成，這間房已顯示為有房客。")
         else:
             room.failed = 0
             db.session.commit()
@@ -269,6 +314,7 @@ def _login_tenant(room, tenant, msg):
     session.permanent = True
     session["room_id"] = room.id
     session["tenant_id"] = tenant.id
+    session["pin_ver"] = tenant.pin_ver
     if msg:
         flash(msg, "ok")
     return redirect(url_for("tenant_home"))
@@ -276,8 +322,8 @@ def _login_tenant(room, tenant, msg):
 
 @app.route("/tenant/logout", methods=["POST"])
 def tenant_logout():
-    session.pop("room_id", None)
-    session.pop("tenant_id", None)
+    for k in ("room_id", "tenant_id", "pin_ver"):
+        session.pop(k, None)
     return redirect(url_for("tenant_rooms"))
 
 
@@ -305,6 +351,26 @@ def tenant_profile():
     tenant.phone = request.form.get("phone", "").strip()
     db.session.commit()
     flash("個人資料已儲存。", "ok")
+    return redirect(url_for("tenant_home"))
+
+
+@app.route("/tenant/pin", methods=["POST"])
+def tenant_pin():
+    room, tenant = tenant_required()
+    if not room:
+        return redirect(url_for("tenant_rooms"))
+    f = request.form
+    if not tenant.check_pin(f.get("old_pin", "").strip()):
+        flash("目前的密碼不對，密碼沒有變更。", "warn")
+    else:
+        problem = pin_problem(f.get("pin", "").strip(), f.get("pin2", "").strip())
+        if problem:
+            flash(problem + "密碼沒有變更。", "warn")
+        else:
+            tenant.set_pin(f["pin"].strip())
+            db.session.commit()
+            session["pin_ver"] = tenant.pin_ver
+            flash("密碼已變更。", "ok")
     return redirect(url_for("tenant_home"))
 
 
@@ -454,15 +520,21 @@ def owner_room(rid):
         elif action == "unlock":
             room.locked, room.failed = False, 0
             flash("已解鎖。", "ok")
-        elif action == "new_code":
-            room.code = new_code()
-            flash(f"新代碼是 {room.code}，舊代碼已失效，房客需重新登入。", "ok")
+        elif action == "verify" and tenant:
+            tenant.verified = True
+            flash(f"已確認 {tenant.name} 是這間房的房客。", "ok")
+        elif action == "reset_pin" and tenant:
+            pin = new_code()
+            while pin in WEAK_PINS:
+                pin = new_code()
+            tenant.set_pin(pin)
+            room.failed, room.locked = 0, False
+            flash(f"{tenant.name} 的臨時密碼是 {pin}，請私下告訴房客，登入後可自行更改。這組密碼只顯示這一次。", "ok")
         elif action == "moveout" and tenant:
             tenant.active = False
             tenant.moved_out_at = datetime.now()
-            room.code = new_code()
             room.failed, room.locked = 0, False
-            flash(f"{tenant.name} 已退租，紀錄已保留。新代碼是 {room.code}。", "ok")
+            flash(f"已解除 {tenant.name} 的綁定，房間變回空房，繳費紀錄已保留。", "ok")
         db.session.commit()
         return redirect(url_for("owner_room", rid=room.id))
     history = []

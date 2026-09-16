@@ -5,20 +5,33 @@
 <h1>{{ room.name }}</h1>
 <p class="muted">{{ '房客：' ~ tenant.name if tenant else '空房' }}</p>
 
-<h2>房間代碼</h2>
+{% if tenant %}
+<h2>房客綁定</h2>
 <div class="panel">
-  <p style="font-size:30px;font-weight:700;letter-spacing:.3em;margin:0">{{ room.code }}</p>
-  <p class="muted small">把這組代碼給房客，用來綁定和登入。{% if room.locked %}<br><strong style="color:var(--red)">這間房因為錯誤太多次已暫停。</strong>{% endif %}</p>
+  <p style="margin:0">{{ tenant.name }}，{{ tenant.created_at.strftime('%Y/%m/%d %H:%M') }} 綁定
+    {% if tenant.verified %}<span class="pill ok">已核對</span>{% else %}<span class="pill wait">尚未核對</span>{% endif %}</p>
+  {% if not tenant.verified %}
+  <p class="muted small">請確認這是你的房客。如果不是，按下方「解除綁定」即可讓房間變回空房。</p>
+  {% endif %}
+  {% if room.locked %}<p class="error">密碼錯誤太多次，這間房已暫停登入。</p>{% endif %}
   <div class="btn-row">
+    {% if not tenant.verified %}
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="verify">
+      <button class="btn small primary">確認是我的房客</button></form>
+    {% endif %}
     {% if room.locked or room.failed %}
     <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="unlock">
-      <button class="btn small primary">解鎖（已錯 {{ room.failed }} 次）</button></form>
+      <button class="btn small">解鎖（已錯 {{ room.failed }} 次）</button></form>
     {% endif %}
-    <form method="post" onsubmit="return confirm('換新代碼後，房客要用新代碼重新登入。確定？')">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="new_code">
-      <button class="btn small">產生新代碼</button></form>
+    <form method="post" onsubmit="return confirm('要替 {{ tenant.name }} 產生臨時密碼嗎？舊密碼會失效。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="reset_pin">
+      <button class="btn small">重設密碼</button></form>
+    <form method="post" onsubmit="return confirm('確定解除 {{ tenant.name }} 的綁定？房間會變回空房，繳費紀錄會保留。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
+      <button class="btn small danger">解除綁定（退租）</button></form>
   </div>
 </div>
+{% endif %}
 
 <h2>基本資料</h2>
 <div class="panel">
@@ -56,14 +69,6 @@
   {% else %}<p class="muted">還沒有紀錄。</p>{% endfor %}
 </div>
 
-<h2>退租</h2>
-<div class="panel">
-  <p class="muted small" style="margin-top:0">退租後房間變回空房並換新代碼，這位房客的繳費紀錄會保留。</p>
-  <form method="post" onsubmit="return confirm('確定讓 {{ tenant.name }} 退租？')">
-    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
-    <button class="btn danger">辦理退租</button>
-  </form>
-</div>
 {% endif %}
 
 {% if past %}

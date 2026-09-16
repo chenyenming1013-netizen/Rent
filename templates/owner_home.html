@@ -9,19 +9,19 @@
   </form>
 </div>
 <h1>七間房總覽</h1>
-<p class="muted">{{ period }} 這期。黃色要對帳，紅色要聯絡房客。</p>
+<p class="muted">{{ period }} 這期。黃色要對帳，紅色要聯絡房客，「新綁定」要核對是不是你的房客。</p>
 
 <div class="panel scroll">
 <table>
-  <thead><tr><th>房間</th><th>房客</th><th class="num">月租</th><th>代碼</th><th>本期</th><th></th></tr></thead>
+  <thead><tr><th>房間</th><th>房客</th><th class="num">月租</th><th>登入</th><th>本期</th><th></th></tr></thead>
   <tbody>
   {% for r in rooms %}
     {% set t = r.tenant %}{% set s = status[r.id] %}
     <tr>
       <td><strong>{{ r.name }}</strong></td>
-      <td>{{ t.name if t else '—' }}</td>
+      <td>{{ t.name if t else '—' }}{% if t and not t.verified %} <span class="pill wait">新綁定</span>{% endif %}</td>
       <td class="num">{{ r.rent|money }}</td>
-      <td>{{ r.code }}{% if r.locked %} <span class="pill late">已鎖</span>{% endif %}</td>
+      <td>{% if r.locked %}<span class="pill late">已鎖</span>{% elif r.failed %}錯 {{ r.failed }} 次{% else %}—{% endif %}</td>
       <td><span class="pill {{ s[1] }}">{{ s[0] }}</span></td>
       <td><a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">管理</a></td>
     </tr>

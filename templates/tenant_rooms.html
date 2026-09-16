@@ -14,7 +14,7 @@
 {% if mine %}
 <p class="muted">這台裝置已綁定 {{ mine.name }}，一次只能使用一間房。</p>
 {% else %}
-<p class="muted">空房要用房東給的四位數代碼綁定，綁定後會變成綠色。</p>
+<p class="muted">點空房就能綁定，並設定自己的四位數密碼。綁定後房間會變成綠色。</p>
 {% endif %}
 
 {% for building, rooms in groups.items() %}
