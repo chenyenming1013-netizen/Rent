@@ -5,9 +5,9 @@
   <p class="muted">輝煌、民權、憲政，七間房的收費紀錄。</p>
 </header>
 <nav class="doors">
-  <a class="door" href="{{ url_for('tenant_rooms') }}">
+  <a class="door" href="{{ url_for('tenant_login') }}">
     <span class="door-title">我是房客</span>
-    <span class="door-sub">選房間、抄電表、回報繳費</span>
+    <span class="door-sub">{% if mine %}進入 {{ mine.name }}{% else %}輸入房東提供的密碼{% endif %}</span>
   </a>
   <a class="door owner" href="{{ url_for('owner_home') }}">
     <span class="door-title">我是屋主</span>

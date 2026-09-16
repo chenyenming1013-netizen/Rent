@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}綁定 {{ room.name }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_login') }}">← 重新輸入密碼</a>
+<h1>{{ room.name }}</h1>
+<p class="muted">第一次使用，請填寫基本資料完成綁定。</p>
+<div class="panel">
+<form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="name">姓名</label>
+  <input id="name" name="name" value="{{ form.get('name','') }}" required autofocus>
+  <label for="phone">電話</label>
+  <input id="phone" name="phone" inputmode="tel" value="{{ form.get('phone','') }}">
+  <label for="checkin">入住日期</label>
+  <input id="checkin" name="checkin" type="date" value="{{ form.get('checkin','') }}" required>
+  <div class="calc">
+    <div><span>月租</span><span>{{ room.rent|money }}</span></div>
+    <div><span>押金（{{ room.deposit_months }} 個月）</span><span>{{ room.deposit|money }}</span></div>
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn primary block">完成綁定</button>
+</form>
+</div>
+<p class="muted small" style="margin-top:12px">不是這間房？請回上一頁重新輸入密碼，或聯絡房東。</p>
+{% endblock %}

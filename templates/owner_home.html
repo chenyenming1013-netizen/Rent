@@ -9,11 +9,20 @@
   </form>
 </div>
 <h1>七間房總覽</h1>
+{% if login_locked %}
+<div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+  <span>密碼錯誤次數太多，房客登入已暫停。已登入的房客不受影響。</span>
+  <form method="post" action="{{ url_for('owner_reopen') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn small">重新開放</button>
+  </form>
+</div>
+{% endif %}
 <p class="muted">{{ period }} 這期。黃色要對帳，紅色要聯絡房客，「新綁定」要核對是不是你的房客。</p>
 
 <div class="panel scroll">
 <table>
-  <thead><tr><th>房間</th><th>房客</th><th class="num">月租</th><th>登入</th><th>本期</th><th></th></tr></thead>
+  <thead><tr><th>房間</th><th>房客</th><th class="num">月租</th><th>房客密碼</th><th>本期</th><th></th></tr></thead>
   <tbody>
   {% for r in rooms %}
     {% set t = r.tenant %}{% set s = status[r.id] %}
@@ -21,13 +30,23 @@
       <td><strong>{{ r.name }}</strong></td>
       <td>{{ t.name if t else '—' }}{% if t and not t.verified %} <span class="pill wait">新綁定</span>{% endif %}</td>
       <td class="num">{{ r.rent|money }}</td>
-      <td>{% if r.locked %}<span class="pill late">已鎖</span>{% elif r.failed %}錯 {{ r.failed }} 次{% else %}—{% endif %}</td>
+      <td><strong style="letter-spacing:.15em">{{ r.code }}</strong></td>
       <td><span class="pill {{ s[1] }}">{{ s[0] }}</span></td>
       <td><a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">管理</a></td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+</div>
+
+<div class="panel qr-panel">
+  <div class="qr">{{ qr }}</div>
+  <div>
+    <h3>房客入口</h3>
+    <p style="margin:4px 0;word-break:break-all"><a href="{{ entry }}" target="_blank" rel="noopener">{{ entry }}</a></p>
+    <p class="muted small">七間房共用這個網址。房客輸入各自的密碼後會進入自己的房間，之後同一支手機會自動進入。密碼請私下告訴房客，不要貼在公共區域。</p>
+    <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ entry }}').then(()=>this.textContent='已複製')">複製網址</button>
+  </div>
 </div>
 
 <h2>待確認收款（{{ pending|length }}）</h2>

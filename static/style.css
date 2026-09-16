@@ -108,3 +108,16 @@ details summary{cursor:pointer;color:var(--indigo)}
 .confirm-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .confirm-form input{width:120px;height:34px}
 .confirm-form input.note{width:160px}
+
+.qr-panel{display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:start}
+.qr svg{display:block;width:100%;height:auto;background:#fff;border-radius:6px}
+/* unused */.qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-top:16px}
+.qr-card{background:var(--paper);border:1px dashed var(--line);border-radius:var(--r);padding:16px;text-align:center;break-inside:avoid}
+.qr-card h3{font-size:20px;font-weight:700;margin-bottom:8px}
+.qr-card .qr{width:150px;margin:0 auto}
+@media (max-width:420px){.qr-panel{grid-template-columns:1fr}.qr-panel .qr{width:160px}}
+@media print{
+  body{background:#fff}
+  .no-print{display:none}
+  /* unused */.qr-grid{grid-template-columns:repeat(3,1fr)}
+}
