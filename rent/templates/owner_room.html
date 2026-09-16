@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}管理 {{ room.name }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('owner_home') }}">← 總覽</a>
+<h1>{{ room.name }}</h1>
+<p class="muted">{{ '房客：' ~ tenant.name if tenant else '空房' }}</p>
+
+<h2>房間代碼</h2>
+<div class="panel">
+  <p style="font-size:30px;font-weight:700;letter-spacing:.3em;margin:0">{{ room.code }}</p>
+  <p class="muted small">把這組代碼給房客，用來綁定和登入。{% if room.locked %}<br><strong style="color:var(--red)">這間房因為錯誤太多次已暫停。</strong>{% endif %}</p>
+  <div class="btn-row">
+    {% if room.locked or room.failed %}
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="unlock">
+      <button class="btn small primary">解鎖（已錯 {{ room.failed }} 次）</button></form>
+    {% endif %}
+    <form method="post" onsubmit="return confirm('換新代碼後，房客要用新代碼重新登入。確定？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="new_code">
+      <button class="btn small">產生新代碼</button></form>
+  </div>
+</div>
+
+<h2>基本資料</h2>
+<div class="panel">
+<form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="action" value="save">
+  <div class="row2">
+    <div><label for="rent">月租</label><input id="rent" name="rent" type="number" min="0" value="{{ room.rent }}"></div>
+    <div><label for="deposit_months">押金月數</label><input id="deposit_months" name="deposit_months" type="number" min="0" value="{{ room.deposit_months }}"></div>
+  </div>
+  <label for="meter_start">入住時電表度數</label>
+  <input id="meter_start" name="meter_start" type="number" min="0" value="{{ room.meter_start }}">
+  {% if tenant %}
+  <div class="row2">
+    <div><label for="name">房客姓名</label><input id="name" name="name" value="{{ tenant.name }}"></div>
+    <div><label for="phone">電話</label><input id="phone" name="phone" value="{{ tenant.phone }}"></div>
+  </div>
+  <label for="checkin">入住日期</label>
+  <input id="checkin" name="checkin" type="date" value="{{ tenant.checkin.isoformat() }}">
+  {% endif %}
+  <p class="muted small" style="margin-top:10px">押金 = 月租 × 月數 = {{ room.deposit|money }}</p>
+  <button class="btn primary block">儲存</button>
+</form>
+</div>
+
+{% if tenant %}
+<h2>繳費紀錄</h2>
+<div class="panel">
+  {% for p in history %}
+  <div class="list-item">
+    <div class="list-head"><strong>{{ p.period }}</strong>
+      <span class="pill {{ 'ok' if p.status == '已確認' else 'wait' }}">{{ p.status }}</span></div>
+    <div class="muted small">回報 {{ p.total|money }}{% if p.received is not none %}，實收 {{ p.received|money }}{% endif %}，電表 {{ p.meter_last }} → {{ p.meter_now }}{% if p.confirm_note %}，{{ p.confirm_note }}{% endif %}</div>
+  </div>
+  {% else %}<p class="muted">還沒有紀錄。</p>{% endfor %}
+</div>
+
+<h2>退租</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">退租後房間變回空房並換新代碼，這位房客的繳費紀錄會保留。</p>
+  <form method="post" onsubmit="return confirm('確定讓 {{ tenant.name }} 退租？')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
+    <button class="btn danger">辦理退租</button>
+  </form>
+</div>
+{% endif %}
+
+{% if past %}
+<h2>過去的房客</h2>
+<div class="panel">
+  {% for t in past %}
+  <div class="list-item">{{ t.name }}　<span class="muted small">{{ t.checkin.strftime('%Y/%m/%d') }} 至 {{ t.moved_out_at.strftime('%Y/%m/%d') }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

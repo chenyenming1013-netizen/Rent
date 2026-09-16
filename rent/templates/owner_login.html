@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}屋主登入{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('index') }}">← 回首頁</a>
+<h1>屋主登入</h1>
+<div class="panel">
+<form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="password">密碼</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn primary block">登入</button>
+</form>
+</div>
+{% if default_pw %}
+<p class="flash warn" style="margin-top:14px">目前使用預設密碼 admin。上線前請設定環境變數 OWNER_PASSWORD。</p>
+{% endif %}
+{% endblock %}

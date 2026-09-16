@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ room.name }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_rooms') }}">← 換房間</a>
+<h1>{{ room.name }}</h1>
+<p class="muted">
+  {% if mode == 'bind' %}這間目前是空房。輸入房東給你的代碼，並填寫基本資料完成綁定。
+  {% else %}這間已有房客。輸入房間代碼登入。{% endif %}
+</p>
+
+<div class="panel">
+<form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="code">房間代碼（四位數）</label>
+  <input id="code" name="code" class="code-input" inputmode="numeric" pattern="\d{4}"
+         maxlength="4" autocomplete="off" required autofocus>
+  {% if mode == 'bind' %}
+    <label for="name">姓名</label>
+    <input id="name" name="name" value="{{ form.get('name','') }}" required>
+    <label for="phone">電話</label>
+    <input id="phone" name="phone" inputmode="tel" value="{{ form.get('phone','') }}">
+    <label for="checkin">入住日期</label>
+    <input id="checkin" name="checkin" type="date" value="{{ form.get('checkin','') }}" required>
+    <div class="calc">
+      <div><span>月租</span><span>{{ room.rent|money }}</span></div>
+      <div><span>押金（{{ room.deposit_months }} 個月）</span><span>{{ room.deposit|money }}</span></div>
+    </div>
+  {% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button class="btn primary block">{{ '綁定這間房' if mode == 'bind' else '登入' }}</button>
+</form>
+</div>
+<p class="muted small" style="margin-top:12px">代碼錯 5 次會暫停這間房，需請房東解鎖。</p>
+{% endblock %}

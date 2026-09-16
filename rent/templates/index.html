@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="hero">
+  <h1>房租繳費</h1>
+  <p class="muted">輝煌、民權、憲政，七間房的收費紀錄。</p>
+</header>
+<nav class="doors">
+  <a class="door" href="{{ url_for('tenant_rooms') }}">
+    <span class="door-title">我是房客</span>
+    <span class="door-sub">選房間、抄電表、回報繳費</span>
+  </a>
+  <a class="door owner" href="{{ url_for('owner_home') }}">
+    <span class="door-title">我是屋主</span>
+    <span class="door-sub">看七間房狀態、確認收款</span>
+  </a>
+</nav>
+{% endblock %}

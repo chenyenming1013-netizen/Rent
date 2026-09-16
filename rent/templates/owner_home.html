@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}屋主後台{% endblock %}
+{% block content %}
+<div class="topbar">
+  <a class="back" href="{{ url_for('index') }}">← 回首頁</a>
+  <form method="post" action="{{ url_for('owner_logout') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn link">登出</button>
+  </form>
+</div>
+<h1>七間房總覽</h1>
+<p class="muted">{{ period }} 這期。黃色要對帳，紅色要聯絡房客。</p>
+
+<div class="panel scroll">
+<table>
+  <thead><tr><th>房間</th><th>房客</th><th class="num">月租</th><th>代碼</th><th>本期</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rooms %}
+    {% set t = r.tenant %}{% set s = status[r.id] %}
+    <tr>
+      <td><strong>{{ r.name }}</strong></td>
+      <td>{{ t.name if t else '—' }}</td>
+      <td class="num">{{ r.rent|money }}</td>
+      <td>{{ r.code }}{% if r.locked %} <span class="pill late">已鎖</span>{% endif %}</td>
+      <td><span class="pill {{ s[1] }}">{{ s[0] }}</span></td>
+      <td><a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">管理</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>待確認收款（{{ pending|length }}）</h2>
+<div class="panel">
+{% for p in pending %}
+  <div class="list-item">
+    <div class="list-head">
+      <strong>{{ p.room.name }}　{{ p.period }}</strong>
+      <span class="muted small">{{ p.tenant.name }}</span>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>末五碼</th><th class="num">回報金額</th><th>日期</th><th>方式</th><th class="num">應付</th></tr></thead>
+      <tbody><tr>
+        {% set due = p.rent_amount + p.elec_amount + p.other_amount %}
+        <td>{{ p.last5 or '—' }}</td>
+        <td class="num {% if p.total != due %}mismatch{% endif %}">{{ p.total|money }}</td>
+        <td>{{ p.paid_date.strftime('%m/%d') if p.paid_date }}</td>
+        <td>{{ p.method }}</td>
+        <td class="num">{{ due|money }}</td>
+      </tr></tbody>
+    </table></div>
+    <p class="muted small" style="margin:6px 0 0">
+      月租 {{ p.rent_amount|money }}，電費 {{ p.elec_amount|money }}（{{ p.meter_last }} → {{ p.meter_now }}，{{ p.usage }} 度）{% if p.other_amount %}，{{ p.other_note }} {{ p.other_amount|money }}{% endif %}
+    </p>
+    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="confirm">
+      <label class="small" for="rcv{{ p.id }}">實收</label>
+      <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
+      <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
+      <button class="btn small primary">確認收款</button>
+    </form>
+  </div>
+{% else %}
+  <p class="muted">沒有待確認的回報。</p>
+{% endfor %}
+</div>
+
+<h2>電費單價</h2>
+<div class="panel">
+<form method="post" action="{{ url_for('owner_settings') }}" class="confirm-form" style="margin:0">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="elec_rate">每度</label>
+  <input id="elec_rate" name="elec_rate" type="number" step="0.01" min="0" value="{{ rate }}">
+  <span>元</span>
+  <button class="btn small">更新單價</button>
+</form>
+<p class="muted small" style="margin-top:8px">依規定不得超過台電當期夏月最高級距單價，請先到台電網站確認。</p>
+</div>
+
+<h2>最近確認的收款</h2>
+<div class="panel scroll">
+<table>
+  <thead><tr><th>房間</th><th>期別</th><th class="num">實收</th><th>確認時間</th><th></th></tr></thead>
+  <tbody>
+  {% for p in recent %}
+  <tr>
+    <td>{{ p.room.name }}</td><td>{{ p.period }}</td>
+    <td class="num {% if p.received != p.total %}mismatch{% endif %}">{{ p.received|money }}</td>
+    <td>{{ p.confirmed_at.strftime('%m/%d %H:%M') }}{% if p.confirm_note %}<div class="muted small">{{ p.confirm_note }}</div>{% endif %}</td>
+    <td>
+      <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" onsubmit="return confirm('確定取消這筆確認？')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="undo">
+        <button class="btn link small">取消確認</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">還沒有確認過的收款。</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

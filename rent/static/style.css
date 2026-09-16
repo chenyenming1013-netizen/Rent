@@ -1,0 +1,110 @@
+:root{
+  --bg:#EDF0F3; --paper:#FFFFFF; --ink:#1C2733; --soft:#5B6876; --line:#CFD6DD;
+  --teal:#0E5C57; --teal-bg:#D5EBE8;
+  --indigo:#2F43A3; --indigo-bg:#E3E7F8;
+  --amber:#8A5300; --amber-bg:#FBEBCF;
+  --red:#A12318; --red-bg:#FBE1DE;
+  --r:10px;
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color:var(--ink); background:var(--bg);
+  font-variant-numeric:tabular-nums;
+}
+*{box-sizing:border-box}
+body{margin:0;line-height:1.6}
+.wrap{max-width:720px;margin:0 auto;padding:24px 18px 64px}
+h1{font-size:30px;font-weight:700;letter-spacing:.02em;margin:0 0 4px}
+h2{font-size:19px;font-weight:700;margin:32px 0 12px}
+h3{font-size:16px;font-weight:500;margin:0}
+a{color:var(--indigo)}
+.muted{color:var(--soft);margin:0}
+.small{font-size:13px}
+:focus-visible{outline:3px solid var(--indigo);outline-offset:2px}
+
+.flash{padding:10px 14px;border-radius:var(--r);margin:0 0 16px}
+.flash.ok{background:var(--teal-bg);color:var(--teal)}
+.flash.warn{background:var(--amber-bg);color:var(--amber)}
+.error{color:var(--red);font-size:13px;margin:4px 0 0}
+
+.hero{margin:32px 0 28px}
+.doors{display:grid;gap:14px}
+.door{display:block;padding:22px 20px;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--r);text-decoration:none;color:var(--ink)}
+.door:hover{border-color:var(--ink)}
+.door-title{display:block;font-size:22px;font-weight:700}
+.door-sub{color:var(--soft)}
+.door.owner{background:var(--ink);color:#fff;border-color:var(--ink)}
+.door.owner .door-sub{color:#B9C3CD}
+
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.back{text-decoration:none;color:var(--soft)}
+
+/* 鑰匙牌：房間選擇 */
+.building{margin:26px 0 10px;font-size:15px;color:var(--soft);font-weight:500}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.tag{position:relative;display:flex;flex-direction:column;justify-content:flex-end;
+  min-height:118px;padding:14px 16px;border-radius:14px 14px 14px 40px;
+  background:var(--paper);border:1.5px dashed var(--line);
+  text-decoration:none;color:var(--ink);transition:transform .15s}
+.tag::before{content:"";position:absolute;top:14px;left:16px;width:14px;height:14px;
+  border-radius:50%;border:2px solid var(--line);background:var(--bg)}
+.tag:hover{transform:translateY(-2px)}
+.tag-name{font-size:21px;font-weight:700;line-height:1.2}
+.tag-state{font-size:13px;color:var(--soft)}
+.tag.taken{background:var(--teal);border:1.5px solid var(--teal);color:#fff}
+.tag.taken::before{border-color:#8CC7C0;background:var(--teal)}
+.tag.taken .tag-state{color:#CDE8E4}
+.tag.mine{background:var(--indigo);border:1.5px solid var(--indigo);color:#fff}
+.tag.mine::before{border-color:#AEB9EC;background:var(--indigo)}
+.tag.mine .tag-state{color:#DCE1F7}
+.tag.off{opacity:.45;pointer-events:none}
+.tag.locked{border:1.5px solid var(--red)}
+@media (prefers-reduced-motion:reduce){.tag{transition:none}.tag:hover{transform:none}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 0;font-size:13px;color:var(--soft)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:14px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px 18px;margin:0}
+.facts dt{font-size:13px;color:var(--soft)}
+.facts dd{margin:0;font-size:18px;font-weight:500}
+.due{border-left:5px solid var(--indigo);border-radius:0;background:var(--indigo-bg);padding:16px 18px;margin-top:18px}
+
+form.stack label{display:block;font-size:14px;color:var(--soft);margin:14px 0 5px}
+input,select{width:100%;height:44px;padding:0 12px;font:inherit;color:var(--ink);
+  background:#fff;border:1px solid var(--line);border-radius:8px}
+input:focus,select:focus{border-color:var(--indigo)}
+.code-input{font-size:28px;letter-spacing:.5em;text-align:center;height:60px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;
+  font:inherit;font-weight:500;border-radius:8px;border:1px solid var(--ink);background:#fff;
+  color:var(--ink);cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+.btn.block{width:100%;margin-top:18px}
+.btn.small{height:34px;padding:0 12px;font-size:14px}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.link{border:none;background:none;color:var(--soft);padding:0;height:auto}
+.btn-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+
+.calc{background:var(--bg);border-radius:8px;padding:12px 14px;margin-top:12px}
+.calc div{display:flex;justify-content:space-between;padding:2px 0}
+.calc .sum{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:700}
+
+.pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.pill.ok{background:var(--teal-bg);color:var(--teal)}
+.pill.wait{background:var(--amber-bg);color:var(--amber)}
+.pill.late{background:var(--red-bg);color:var(--red)}
+.pill.todo{background:var(--indigo-bg);color:var(--indigo)}
+.pill.empty{background:var(--bg);color:var(--soft)}
+
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-weight:500;color:var(--soft);text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.num,th.num{text-align:right}
+.mismatch{color:var(--red);font-weight:700}
+.list-item{padding:12px 0;border-bottom:1px solid var(--line)}
+.list-item:last-child{border-bottom:none}
+.list-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+details summary{cursor:pointer;color:var(--indigo)}
+.confirm-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.confirm-form input{width:120px;height:34px}
+.confirm-form input.note{width:160px}

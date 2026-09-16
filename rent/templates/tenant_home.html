@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ room.name }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <a class="back" href="{{ url_for('tenant_rooms') }}">← 房間列表</a>
+  <form method="post" action="{{ url_for('tenant_logout') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn link">登出</button>
+  </form>
+</div>
+<h1>{{ room.name }}</h1>
+<p class="muted">{{ tenant.name }}，每月 {{ tenant.due_day }} 號繳租</p>
+
+<section class="due">
+  <div class="list-head">
+    <h3>{{ period }} 本期</h3>
+    {% if not current %}<span class="pill todo">尚未回報</span>
+    {% elif current.status == '已確認' %}<span class="pill ok">已確認</span>
+    {% else %}<span class="pill wait">等待房東確認</span>{% endif %}
+  </div>
+  {% if current %}
+  <div class="calc" style="background:#fff">
+    <div><span>月租</span><span>{{ current.rent_amount|money }}</span></div>
+    <div><span>電費（{{ current.usage }} 度 × {{ '%g'|format(current.rate) }}）</span><span>{{ current.elec_amount|money }}</span></div>
+    {% if current.other_amount %}<div><span>其他：{{ current.other_note }}</span><span>{{ current.other_amount|money }}</span></div>{% endif %}
+    <div class="sum"><span>你回報已付</span><span>{{ current.total|money }}</span></div>
+  </div>
+  {% endif %}
+  {% if not current or current.status != '已確認' %}
+  <a class="btn primary block" href="{{ url_for('tenant_pay') }}">{{ '修改本期回報' if current else '抄電表並回報繳費' }}</a>
+  {% endif %}
+</section>
+
+<h2>基本資料</h2>
+<div class="panel">
+  <dl class="facts">
+    <div><dt>月租</dt><dd>{{ room.rent|money }}</dd></div>
+    <div><dt>押金</dt><dd>{{ room.deposit_months }} 個月（{{ room.deposit|money }}）</dd></div>
+    <div><dt>入住日期</dt><dd>{{ tenant.checkin.strftime('%Y/%m/%d') }}</dd></div>
+    <div><dt>繳租日</dt><dd>每月 {{ tenant.due_day }} 號</dd></div>
+  </dl>
+  <details style="margin-top:16px">
+    <summary>修改姓名或電話</summary>
+    <form method="post" action="{{ url_for('tenant_profile') }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="row2">
+        <div><label for="name">姓名</label><input id="name" name="name" value="{{ tenant.name }}" required></div>
+        <div><label for="phone">電話</label><input id="phone" name="phone" inputmode="tel" value="{{ tenant.phone }}"></div>
+      </div>
+      <button class="btn block">儲存個人資料</button>
+    </form>
+  </details>
+  <p class="muted small" style="margin-top:12px">月租、押金、入住日由房東設定，需要調整請聯絡房東。</p>
+</div>
+
+<h2>繳費紀錄</h2>
+<div class="panel">
+  {% for p in history %}
+  <div class="list-item">
+    <div class="list-head">
+      <strong>{{ p.period }}</strong>
+      <span class="pill {{ 'ok' if p.status == '已確認' else 'wait' }}">{{ p.status }}</span>
+    </div>
+    <div class="muted small">
+      月租 {{ p.rent_amount|money }}，電費 {{ p.elec_amount|money }}（{{ p.usage }} 度）{% if p.other_amount %}，其他 {{ p.other_amount|money }}{% endif %}，共 {{ p.total|money }}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">還沒有紀錄，完成第一次回報後會出現在這裡。</p>
+  {% endfor %}
+</div>
+{% endblock %}
