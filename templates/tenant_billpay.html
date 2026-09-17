@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, rent_art %}
+{% from "_pay.html" import payment_fields, err with context %}
+{% block title %}繳費並通知房東｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
+{{ banner('繳費並通知房東', room.name, rent_art(), 'warm') }}
+
+{% for p in pending %}
+<div class="flash warn">
+  <strong>已通知房東，等待確認：</strong>{{ p.detail }}，共 {{ p.total|money }} 元（{{ p.pay_info }}）
+  <form method="post" action="{{ url_for('tenant_pay_cancel', pid=p.id) }}" style="margin-top:6px"
+        onsubmit="return confirm('取消這次的付款通知？')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn link small">填錯了，取消這次通知</button>
+  </form>
+</div>
+{% endfor %}
+
+{% if not payable %}
+<div class="panel" style="margin-top:0"><p style="margin:0">目前沒有需要繳納的項目。</p></div>
+{% else %}
+{% set chosen = form.getlist('item') if form else none %}
+<form method="post" class="panel stack" style="margin-top:0">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h3>勾選這次要繳的項目</h3>
+  {% for i in payable %}
+  <label class="chk item-chk">
+    <input type="checkbox" name="item" value="{{ i.id }}" data-amt="{{ i.amount }}"
+           {% if chosen is none or (i.id|string) in chosen %}checked{% endif %}>
+    <span class="item-name">{{ i.label }}{% if i.month < (today.strftime('%Y-%m')) %}<span class="small warn-text">（{{ month_label(i.month) }}份尚未繳清）</span>{% endif %}</span>
+    <span class="item-amt">{{ i.amount|money }}</span>
+  </label>
+  {% endfor %}
+  {{ err(errors, 'item') }}
+  <div class="bill-total"><span>本次合計</span><strong id="sum">—</strong></div>
+  {{ payment_fields(form, none, prev, errors, '') }}
+  <button class="btn primary block">送出並通知房東</button>
+</form>
+<script>
+(function(){
+  var boxes = document.querySelectorAll('input[name=item]'), total = document.querySelector('[data-total]');
+  var auto = !total.value;
+  total.addEventListener('input', function(){ auto = false; });
+  function calc(){
+    var s = 0; boxes.forEach(function(b){ if (b.checked) s += +b.dataset.amt; });
+    document.getElementById('sum').textContent = s.toLocaleString('zh-TW') + ' 元';
+    if (auto) total.value = s || '';
+  }
+  boxes.forEach(function(b){ b.addEventListener('change', calc); }); calc();
+})();
+</script>
+{% endif %}
+{% endblock %}

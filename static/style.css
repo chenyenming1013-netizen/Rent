@@ -207,3 +207,19 @@ details.plain summary{cursor:pointer;color:var(--indigo)}
 .income .num{font-size:36px;font-weight:700;letter-spacing:.02em;line-height:1.2;margin:2px 0 8px}
 .income .sub{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:#DCE3EA}
 .income .sub b{color:#FFD447;font-weight:700}
+/* 繳費單 */
+.bill .bill-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.bill-ic{flex:none;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.bill-ic.rent{background:#DDF1FF;color:#2F7DB5}
+.bill-ic.elec{background:#FFF3B0;color:#9A6B00}
+.bill-name{flex:1;font-weight:500}
+.bill-amt{font-weight:700;white-space:nowrap}
+.bill-st{flex:none}
+.carry-head{margin:14px 0 0;font-size:14px;color:var(--red);font-weight:700}
+.bill-total{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 14px;background:var(--bg);border-radius:10px}
+.bill-total strong{font-size:20px}
+.ok-text{color:var(--teal)} .warn-text{color:var(--red)}
+.item-chk{padding:10px 0;border-bottom:1px solid var(--line);margin-top:0}
+.item-chk .item-name{flex:1} .item-chk .item-amt{font-weight:700}
+.bill-card{margin-bottom:10px}
+@media (max-width:420px){.bill .bill-row{flex-wrap:wrap}.bill-st{margin-left:46px}}

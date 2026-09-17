@@ -3,7 +3,7 @@
 角色：
   屋主端  /owner   用屋主密碼登入：租屋總覽、確認收款、管理與新增房間
   房客端  /tenant  輸入房東提供的四位數密碼 → 空房先填資料綁定 → 進入自己的房間
-                   可分別回報月租、電費，或兩者同一筆轉帳；可自行修改密碼
+                   查看房東發出的繳費單（月租、電費），付款後通知房東；可自行修改密碼
 """
 import hmac
 import io
@@ -46,7 +46,7 @@ DEFAULT_ROOMS = [
     ("憲政", "憲政 01", "套房"), ("憲政", "憲政 02", "套房"),
     ("憲政", "憲政 03", "套房"), ("憲政", "憲政 04", "套房"),
 ]
-DEFAULT_ROOM_TYPES = ["套房", "雅房", "整層", "店面", "車位", "其他"]
+DEFAULT_ROOM_TYPES = ["套房", "雅房", "整層", "日租", "店面", "車位", "其他"]
 WEAK_CODES = {"0000", "1234", "4321", "1111", "2222", "3333", "4444", "5555",
               "6666", "7777", "8888", "9999", "1212", "0123", "9876"}
 
@@ -163,7 +163,13 @@ class Payment(db.Model):
         return (self.rent_amount or 0) + (self.elec_amount or 0) + (self.other_amount or 0)
 
     @property
+    def is_bill(self):
+        return (self.kind or "").startswith("b") and self.kind != "both"
+
+    @property
     def kind_label(self):
+        if self.is_bill:
+            return "繳費單"
         return KIND_LABEL.get(self.kind, "")
 
     @property
@@ -189,12 +195,56 @@ class Payment(db.Model):
 
     @property
     def detail(self):
+        if self.is_bill:
+            return "、".join(f"{i.label} {i.amount:,}" for i in self.items)
         parts = []
         if self.has_rent:
             parts.append(f"月租 {self.rent_amount:,}")
         if self.has_elec:
             parts.append(f"電費 {self.elec_amount:,}（{self.meter_last}→{self.meter_now}，{self.usage} 度）")
         return "＋".join(parts)
+
+
+class Bill(db.Model):
+    """房東每月發出的繳費單。"""
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenant.id"), nullable=False)
+    room_id = db.Column(db.Integer, db.ForeignKey("room.id"), nullable=False)
+    period = db.Column(db.String(7), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    items = db.relationship("BillItem", backref="bill", cascade="all, delete-orphan",
+                            order_by="BillItem.id")
+    __table_args__ = (db.UniqueConstraint("tenant_id", "period"),)
+
+
+class BillItem(db.Model):
+    """繳費單上的一個項目：某月月租或某月電費。"""
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey("bill.id"), nullable=False)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenant.id"), nullable=False)
+    kind = db.Column(db.String(8), nullable=False)       # rent / elec
+    month = db.Column(db.String(7), nullable=False)      # 這筆費用屬於哪個月份
+    amount = db.Column(db.Integer, nullable=False, default=0)
+    note = db.Column(db.String(60), default="")
+    payment_id = db.Column(db.Integer, db.ForeignKey("payment.id"))
+    paid = db.Column(db.Boolean, default=False)
+    paid_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    payment = db.relationship("Payment", backref="items")
+
+    @property
+    def label(self):
+        m = int(self.month[5:])
+        return f"{m}月{'月租' if self.kind == 'rent' else '電費'}"
+
+    @property
+    def state(self):
+        if self.paid:
+            return "paid"
+        if self.payment_id:
+            return "pending"
+        return "unpaid"
 
 
 class Setting(db.Model):
@@ -369,6 +419,21 @@ def elec_record(pays):
     return pays.get("both") or pays.get("elec")
 
 
+def unpaid_items(tenant):
+    return (BillItem.query.filter_by(tenant_id=tenant.id, paid=False)
+            .order_by(BillItem.month, BillItem.kind.desc(), BillItem.id).all())
+
+
+def month_label(period):
+    y, m = period.split("-")
+    return f"{int(m)}月"
+
+
+def prev_month(period):
+    y, m = map(int, period.split("-"))
+    return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+
 def public_url(path):
     host = request.host
     scheme = "http" if host.startswith(("127.0.0.1", "localhost")) else "https"
@@ -394,7 +459,7 @@ def inject():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
     return {"csrf": session["csrf"], "today": date.today(),
-            "PAY_METHODS": PAY_METHODS}
+            "PAY_METHODS": PAY_METHODS, "month_label": month_label}
 
 
 @app.before_request
@@ -580,11 +645,15 @@ def tenant_home():
     if go:
         return go
     period = this_period()
-    pays = period_payments(tenant, period)
+    bill = Bill.query.filter_by(tenant_id=tenant.id, period=period).first()
+    this_items = bill.items if bill else []
+    older = [i for i in unpaid_items(tenant) if not bill or i.bill_id != bill.id]
+    payable = [i for i in this_items + older if i.state == "unpaid"]
     history = (Payment.query.filter_by(tenant_id=tenant.id)
-               .order_by(Payment.period.desc(), Payment.id.desc()).limit(36).all())
+               .order_by(Payment.created_at.desc()).limit(36).all())
     return render_template("tenant_home.html", room=room, tenant=tenant, period=period,
-                           rent_pay=rent_record(pays), elec_pay=elec_record(pays),
+                           bill=bill, this_items=this_items, older=older,
+                           payable_total=sum(i.amount for i in payable),
                            due=tenant.due_date(period), history=history)
 
 
@@ -640,112 +709,61 @@ def tenant_password():
     return render_template("tenant_password.html", room=room, error=error)
 
 
-@app.route("/tenant/pay")
-def tenant_pay():
+@app.route("/tenant/rent")
+@app.route("/tenant/elec")
+def tenant_old_pages():
     return redirect(url_for("tenant_home"))
 
 
-@app.route("/tenant/rent", methods=["GET", "POST"])
-def tenant_rent():
+@app.route("/tenant/pay", methods=["GET", "POST"])
+def tenant_pay():
     room, tenant, go = tenant_or_login()
     if go:
         return go
-    period = this_period()
-    pays = period_payments(tenant, period)
-    current = rent_record(pays)
-    if current and current.confirmed:
-        flash(f"{period} 的月租房東已確認，不能再修改。", "warn")
-        return redirect(url_for("tenant_home"))
-    separate_elec = pays.get("elec")          # 電費已分開回報
-    rate = float(get_setting("elec_rate", "0") or 0)
-    meter_last = last_meter(room, tenant, period)
+    payable = [i for i in unpaid_items(tenant) if i.state == "unpaid"]
+    pending = (Payment.query.filter(Payment.tenant_id == tenant.id,
+                                    Payment.status == "待確認").all())
+    pending = [p for p in pending if p.is_bill]
     errors = {}
-
     if request.method == "POST":
-        f = request.form
-        combine = f.get("combine") == "1" and not separate_elec
-        mn = None
-        if combine:
-            raw = f.get("meter_now", "").strip()
-            mn = to_int(raw, -1) if raw else None
-            if mn is None:
-                errors["meter_now"] = "請填本月電表度數"
-            elif mn < meter_last:
-                errors["meter_now"] = f"不能小於上期度數 {meter_last:,}"
-        fields = read_payment_fields(f, errors)
+        ids = {to_int(x) for x in request.form.getlist("item")}
+        chosen = [i for i in payable if i.id in ids]
+        if not chosen:
+            errors["item"] = "請勾選要繳的項目"
+        fields = read_payment_fields(request.form, errors)
         if not errors:
-            pay = current or Payment(tenant_id=tenant.id, room_id=room.id, period=period)
-            pay.kind = "both" if combine else "rent"
-            pay.rent_amount = room.rent or 0
-            if combine:
-                pay.meter_last, pay.meter_now = meter_last, mn
-                pay.usage, pay.rate = mn - meter_last, rate
-                pay.elec_amount = round((mn - meter_last) * rate)
-            else:
-                pay.meter_last = pay.meter_now = None
-                pay.usage, pay.rate, pay.elec_amount = 0, 0, 0
-            pay.other_amount, pay.other_note = 0, ""
-            for k, v in fields.items():
-                setattr(pay, k, v)
-            pay.status = "待確認"
+            pay = Payment(tenant_id=tenant.id, room_id=room.id, period=this_period(),
+                          kind="b" + secrets.token_hex(3),
+                          rent_amount=sum(i.amount for i in chosen if i.kind == "rent"),
+                          elec_amount=sum(i.amount for i in chosen if i.kind == "elec"),
+                          status="待確認", **fields)
             db.session.add(pay)
+            db.session.flush()
+            for i in chosen:
+                i.payment_id = pay.id
             db.session.commit()
-            flash("月租已通知房東，等待房東確認。", "ok")
+            flash("已通知房東，等待房東確認。", "ok")
             return redirect(url_for("tenant_home"))
-
-    return render_template("tenant_rent.html", room=room, tenant=tenant, period=period,
-                           pay=current, separate_elec=separate_elec, rate=rate,
-                           meter_last=meter_last, errors=errors,
+    return render_template("tenant_billpay.html", room=room, tenant=tenant,
+                           payable=payable, pending=pending, errors=errors,
                            form=request.form if request.method == "POST" else None,
                            prev=prev_payment_info(tenant))
 
 
-@app.route("/tenant/elec", methods=["GET", "POST"])
-def tenant_elec():
+@app.route("/tenant/pay/<int:pid>/cancel", methods=["POST"])
+def tenant_pay_cancel(pid):
     room, tenant, go = tenant_or_login()
     if go:
         return go
-    period = this_period()
-    pays = period_payments(tenant, period)
-    if pays.get("both"):
-        return render_template("tenant_elec.html", room=room, period=period,
-                               combined=pays["both"])
-    current = pays.get("elec")
-    if current and current.confirmed:
-        flash(f"{period} 的電費房東已確認，不能再修改。", "warn")
-        return redirect(url_for("tenant_home"))
-    rate = float(get_setting("elec_rate", "0") or 0)
-    meter_last = last_meter(room, tenant, period)
-    errors = {}
-
-    if request.method == "POST":
-        f = request.form
-        raw = f.get("meter_now", "").strip()
-        mn = to_int(raw, -1) if raw else None
-        if mn is None:
-            errors["meter_now"] = "請填本月電表度數"
-        elif mn < meter_last:
-            errors["meter_now"] = f"不能小於上期度數 {meter_last:,}"
-        fields = read_payment_fields(f, errors)
-        if not errors:
-            pay = current or Payment(tenant_id=tenant.id, room_id=room.id,
-                                     period=period, kind="elec")
-            pay.rent_amount = 0
-            pay.meter_last, pay.meter_now = meter_last, mn
-            pay.usage, pay.rate = mn - meter_last, rate
-            pay.elec_amount = round((mn - meter_last) * rate)
-            for k, v in fields.items():
-                setattr(pay, k, v)
-            pay.status = "待確認"
-            db.session.add(pay)
-            db.session.commit()
-            flash("電費已通知房東，等待房東確認。", "ok")
-            return redirect(url_for("tenant_home"))
-
-    return render_template("tenant_elec.html", room=room, period=period, combined=None,
-                           pay=current, rate=rate, meter_last=meter_last, errors=errors,
-                           form=request.form if request.method == "POST" else None,
-                           prev=prev_payment_info(tenant))
+    p = db.get_or_404(Payment, pid)
+    if p.tenant_id != tenant.id or p.confirmed or not p.is_bill:
+        abort(404)
+    for i in p.items:
+        i.payment_id = None
+    db.session.delete(p)
+    db.session.commit()
+    flash("已取消這次的付款通知，可以重新填寫。", "ok")
+    return redirect(url_for("tenant_pay"))
 
 
 # ================================================================ 屋主端
@@ -826,18 +844,18 @@ def room_status(room, period):
     t = room.tenant
     if not t:
         return ("空房", "empty", None)
-    pays = period_payments(t, period)
-    pending = [p for p in pays.values() if not p.confirmed]
+    pending = (Payment.query.filter_by(tenant_id=t.id, status="待確認")
+               .order_by(Payment.id).first())
     if pending:
-        return ("待確認", "wait", pending[0].id)
-    rent_p, elec_p = rent_record(pays), elec_record(pays)
-    if rent_p and elec_p:
-        return ("已完成", "ok", None)
-    if rent_p:
-        return ("待電費", "todo", None)
-    if date.today() > t.due_date(period):
-        return ("逾期", "late", None)
-    return (f"{t.due_day} 號繳", "todo", None)
+        return ("待確認", "wait", pending.id)
+    unpaid = [i for i in unpaid_items(t) if i.state == "unpaid"]
+    if unpaid:
+        total = sum(i.amount for i in unpaid)
+        late = any(i.month < period for i in unpaid) or date.today() > t.due_date(period)
+        return (f"{'逾期' if late else '待繳'} {total:,}", "late" if late else "todo", None)
+    if not Bill.query.filter_by(tenant_id=t.id, period=period).first():
+        return ("未發帳單", "empty", None)
+    return ("已繳清", "ok", None)
 
 
 @app.route("/owner")
@@ -860,12 +878,103 @@ def owner_home():
         "pending_n": sum(1 for p in month_rows if not p.confirmed),
         "expected": sum(r.rent or 0 for r in rooms if r.tenant),
     }
+    unbilled = sum(1 for r in rooms if r.tenant and not
+                   Bill.query.filter_by(tenant_id=r.tenant.id, period=period).first())
     entry = public_url(url_for("tenant_login"))
-    return render_template("owner_home.html", rooms=rooms, status=status, period=period,
+    return render_template("owner_home.html", unbilled=unbilled, rooms=rooms, status=status, period=period,
                            pending=pending, recent=recent, inactive=inactive, income=income,
                            rate=get_setting("elec_rate", "0"),
                            login_locked=get_setting("tenant_login_locked") == "1",
                            entry=entry, qr=qr_svg(entry))
+
+
+@app.route("/owner/bills", methods=["GET", "POST"])
+def owner_bills():
+    if (g := owner_guard()):
+        return g
+    period = this_period()
+    rooms = [r for r in Room.query.filter_by(active=True).order_by(Room.sort, Room.id).all()
+             if r.tenant]
+    f = request.form
+    elec_month = f.get("elec_month") or request.args.get("elec_month") or period
+    months = [period, prev_month(period), prev_month(prev_month(period))]
+    if elec_month not in months:
+        elec_month = period
+
+    if request.method == "POST":
+        sent, skipped = [], []
+        for r in rooms:
+            t = r.tenant
+            rent = max(to_int(f.get(f"rent_{r.id}"), 0), 0)
+            elec = max(to_int(f.get(f"elec_{r.id}"), 0), 0)
+            if not rent and not elec:
+                continue
+            bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
+            if not bill:
+                bill = Bill(tenant_id=t.id, room_id=r.id, period=period)
+                db.session.add(bill)
+                db.session.flush()
+            for kind, month, amount, note in [
+                    ("rent", period, rent, ""),
+                    ("elec", elec_month, elec, f.get(f"note_{r.id}", "").strip()[:60])]:
+                item = BillItem.query.filter_by(tenant_id=t.id, kind=kind, month=month).first()
+                if item and item.state != "unpaid":
+                    if amount:
+                        skipped.append(f"{r.name} {item.label}")
+                    continue
+                if not amount:
+                    continue
+                if item:
+                    item.amount, item.note = amount, note or item.note
+                else:
+                    db.session.add(BillItem(bill_id=bill.id, tenant_id=t.id, kind=kind,
+                                            month=month, amount=amount, note=note))
+            sent.append(r.name)
+        db.session.commit()
+        if sent:
+            flash(f"已發送繳費單給 {len(sent)} 間：{'、'.join(sent)}。", "ok")
+        else:
+            flash("沒有填寫任何金額，沒有發送。", "warn")
+        if skipped:
+            flash(f"這些項目已付款或已通知房東，沒有更改：{'、'.join(skipped)}。", "warn")
+        return redirect(url_for("owner_bills", elec_month=elec_month))
+
+    rows = []
+    for r in rooms:
+        t = r.tenant
+        bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
+        rent_item = BillItem.query.filter_by(tenant_id=t.id, kind="rent", month=period).first()
+        elec_item = BillItem.query.filter_by(tenant_id=t.id, kind="elec", month=elec_month).first()
+        rows.append({"room": r, "tenant": t, "bill": bill,
+                     "rent_item": rent_item, "elec_item": elec_item,
+                     "carry": [i for i in unpaid_items(t)
+                               if i.month < period and not (i.kind == "elec" and i.month == elec_month)]})
+    return render_template("owner_bills.html", rows=rows, period=period,
+                           elec_month=elec_month, months=months,
+                           rate=get_setting("elec_rate", "0"))
+
+
+@app.route("/owner/bill-item/<int:iid>/delete", methods=["POST"])
+def owner_bill_item_delete(iid):
+    if (g := owner_guard()):
+        return g
+    item = db.get_or_404(BillItem, iid)
+    back = request.form.get("back")
+    room_id = item.bill.room_id
+    if item.state != "unpaid":
+        flash("這個項目已付款或房客已通知房東，不能刪除。", "warn")
+    else:
+        bill = item.bill
+        label = item.label
+        db.session.delete(item)
+        db.session.flush()
+        if not bill.items:
+            db.session.delete(bill)
+        db.session.commit()
+        flash(f"已刪除 {label}。", "ok")
+    if back == "room":
+        return redirect(url_for("owner_room", rid=room_id))
+    return redirect(url_for("owner_bills"))
 
 
 @app.route("/owner/reopen", methods=["POST"])
@@ -1000,7 +1109,8 @@ def owner_room(rid):
                 flash(f"{tenant.name} 還有 {left} 筆待確認的回報，仍會顯示在總覽，請確認收款或刪除。", "warn")
         elif action == "delete":
             used = Tenant.query.filter_by(room_id=room.id).first() or \
-                Payment.query.filter_by(room_id=room.id).first()
+                Payment.query.filter_by(room_id=room.id).first() or \
+                Bill.query.filter_by(room_id=room.id).first()
             if used:
                 flash("這間房有房客或繳費紀錄，不能刪除，只能停用。", "warn")
             else:
@@ -1031,10 +1141,12 @@ def owner_room(rid):
                             Tenant.active.is_(False)).all())
     past = (Tenant.query.filter_by(room_id=room.id, active=False)
             .order_by(Tenant.moved_out_at.desc()).all())
+    open_items = unpaid_items(tenant) if tenant else []
     deletable = not (Tenant.query.filter_by(room_id=room.id).first()
                      or Payment.query.filter_by(room_id=room.id).first())
     return render_template("owner_room.html", room=room, tenant=tenant, history=history,
-                           past=past, past_pending=past_pending, deletable=deletable, buildings=buildings(),
+                           past=past, past_pending=past_pending, deletable=deletable,
+                           open_items=open_items, buildings=buildings(),
                            types=room_types(),
                            status=room_status(room, this_period()) if room.active else None)
 
@@ -1049,6 +1161,8 @@ def owner_pay(pid):
         p.confirm_note = request.form.get("note", "").strip()
         p.status = "已確認"
         p.confirmed_at = datetime.now()
+        for i in p.items:
+            i.paid, i.paid_at = True, p.confirmed_at
         diff = p.received - p.due
         msg = f"{p.room.name} {p.period} {p.kind_label} 已確認收款 {p.received:,}。"
         if diff:
@@ -1059,6 +1173,8 @@ def owner_pay(pid):
             flash("已確認的款項不能刪除，請先取消確認。", "warn")
         else:
             label = f"{p.room.name} {p.period} {p.kind_label}（{p.tenant.name}）"
+            for i in p.items:
+                i.payment_id = None
             db.session.delete(p)
             db.session.commit()
             flash(f"已刪除 {label} 的回報。", "ok")
@@ -1067,6 +1183,8 @@ def owner_pay(pid):
             return redirect(url_for("owner_home"))
     elif request.form.get("action") == "undo":
         p.status = "待確認"
+        for i in p.items:
+            i.paid, i.paid_at = False, None
         p.confirm_note = (p.confirm_note + f"｜{datetime.now():%m/%d %H:%M} 取消確認").strip("｜")
         p.confirmed_at = None
         flash(f"{p.room.name} {p.period} {p.kind_label} 已取消確認。", "warn")

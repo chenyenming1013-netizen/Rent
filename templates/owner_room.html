@@ -74,7 +74,24 @@
 </div>
 
 {% if tenant %}
-<h2>繳費紀錄</h2>
+<h2>未繳清的帳單項目</h2>
+<div class="panel">
+  {% for i in open_items %}
+  <div class="list-item list-head">
+    <span>{{ i.label }} {{ i.amount|money }} 元{% if i.note %}<span class="muted small">・{{ i.note }}</span>{% endif %}
+      <span class="pill {{ 'wait' if i.state == 'pending' else 'late' }}">{{ '房客已通知' if i.state == 'pending' else '未繳' }}</span></span>
+    {% if i.state == 'unpaid' %}
+    <form method="post" action="{{ url_for('owner_bill_item_delete', iid=i.id) }}" onsubmit="return confirm('刪除 {{ i.label }}？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="room">
+      <button class="btn link small">刪除</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}<p class="muted" style="margin:0">沒有未繳清的項目。</p>{% endfor %}
+  <p style="margin:12px 0 0"><a href="{{ url_for('owner_bills') }}">到「發送繳費單」新增或修改金額</a></p>
+</div>
+
+<h2>付款紀錄</h2>
 <div class="panel">
   {% for p in history %}
   <div class="list-item">

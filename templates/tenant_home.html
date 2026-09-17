@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_art.html" import banner, house, icon, status_pill %}
+{% from "_art.html" import banner, house, icon %}
 {% block title %}{{ room.name }}｜租屋小幫手{% endblock %}
 {% block content %}
 <div class="topbar">
@@ -14,20 +14,34 @@
 </div>
 {{ banner(room.name, tenant.name ~ '・每月 ' ~ tenant.due_day ~ ' 號繳租', house(room.color), room.color[2]) }}
 
-<h2>{{ period }} 本期繳費</h2>
-<div class="pay-cards">
-  <a class="pay-card {% if rent_pay and rent_pay.confirmed %}done{% endif %}" href="{{ url_for('tenant_rent') }}">
-    <span class="home-ic" style="background:#DDF1FF;color:#2F7DB5">{{ icon('cash') }}</span>
-    <span><span style="display:block;font-weight:700;font-size:18px">月租繳費並通知房東</span>
-      <span class="meta">應繳 {{ room.rent|money }}・{{ due.month }}/{{ due.day }} 前{% if rent_pay and rent_pay.kind == 'both' %}・含電費{% endif %}</span></span>
-    <span class="right">{{ status_pill(rent_pay) }}<span class="home-go">›</span></span>
-  </a>
-  <a class="pay-card {% if elec_pay and elec_pay.confirmed %}done{% endif %}" href="{{ url_for('tenant_elec') }}">
-    <span class="home-ic" style="background:#FFF3B0;color:#9A6B00">{{ icon('bolt') }}</span>
-    <span><span style="display:block;font-weight:700;font-size:18px">電費繳費並通知房東</span>
-      <span class="meta">{% if elec_pay %}{{ elec_pay.usage }} 度・{{ elec_pay.elec_amount|money }} 元{% if elec_pay.kind == 'both' %}・隨月租繳{% endif %}{% else %}先抄電表，自動計算金額{% endif %}</span></span>
-    <span class="right">{{ status_pill(elec_pay) }}<span class="home-go">›</span></span>
-  </a>
+<h2>{{ month_label(period) }}繳費單</h2>
+{% macro item_row(i, carry=False) -%}
+<div class="bill-row">
+  <span class="bill-ic {{ i.kind }}">{{ icon('cash' if i.kind == 'rent' else 'bolt', 20) }}</span>
+  <span class="bill-name">{% if carry %}{{ i.label }}{% else %}本月{{ '月租' if i.kind == 'rent' else '電費' }}{% if i.kind == 'elec' and i.month != period %}<span class="muted small">（{{ i.label }}）</span>{% endif %}{% endif %}
+    {% if i.note %}<span class="muted small" style="display:block">{{ i.note }}</span>{% endif %}
+    {% if i.kind == 'elec' or carry %}<span class="small {{ 'ok-text' if i.state == 'paid' else 'warn-text' }}" style="display:block">{{ month_label(i.month) }}份{{ '已繳清' if i.state == 'paid' else '尚未繳清' }}</span>{% endif %}</span>
+  <span class="bill-amt">{{ i.amount|money }} 元</span>
+  <span class="bill-st">{% if i.state == 'paid' %}<span class="pill ok">房東已確認</span>{% elif i.state == 'pending' %}<span class="pill wait">已通知房東</span>{% else %}<span class="pill late">未繳</span>{% endif %}</span>
+</div>
+{%- endmacro %}
+<div class="panel bill">
+  {% if this_items %}
+    {% for i in this_items %}{{ item_row(i) }}{% endfor %}
+  {% else %}
+    <p class="muted" style="margin:0">房東還沒發出{{ month_label(period) }}的繳費單。</p>
+  {% endif %}
+  {% if older %}
+  <div class="carry-head">之前尚未繳清</div>
+  {% for i in older %}{{ item_row(i, True) }}{% endfor %}
+  {% endif %}
+  {% if payable_total %}
+  <div class="bill-total"><span>尚未繳納合計</span><strong>{{ payable_total|money }} 元</strong></div>
+  <p class="muted small" style="margin:4px 0 0">請於 {{ due.month }}/{{ due.day }} 前繳納。</p>
+  <a class="btn primary block" href="{{ url_for('tenant_pay') }}">繳費並通知房東</a>
+  {% elif this_items or older %}
+  <div class="bill-total"><span>本期狀態</span><strong>{{ '已通知房東，等待確認' if (this_items + older)|selectattr('state','equalto','pending')|list else '全部已繳清' }}</strong></div>
+  {% endif %}
 </div>
 
 <h2>基本資料</h2>
@@ -54,7 +68,7 @@
   <p class="muted small" style="margin:10px 0 0">房型、月租、押金、入住日由房東設定。</p>
 </div>
 
-<h2>繳費紀錄</h2>
+<h2>付款紀錄</h2>
 <div class="panel">
   {% for p in history %}
   <div class="list-item">
@@ -62,10 +76,10 @@
       <strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
       <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ '房東已確認' if p.confirmed else '房東待確認' }}</span>
     </div>
-    <div class="muted small">{{ p.detail }}・共 {{ p.total|money }}・{{ p.method }}</div>
+    <div class="muted small">{{ p.detail }}・共付 {{ p.total|money }}・{{ p.method }}・{{ p.paid_date.strftime('%m/%d') if p.paid_date }}</div>
   </div>
   {% else %}
-  <p class="muted" style="margin:0">還沒有紀錄，第一次通知房東後會出現在這裡。</p>
+  <p class="muted" style="margin:0">還沒有付款紀錄，繳費並通知房東後會出現在這裡。</p>
   {% endfor %}
 </div>
 {% endblock %}

@@ -23,6 +23,9 @@
     <span>本月應收月租 {{ income.expected|money }}（不含電費）</span>
   </div>
 </section>
+<a class="btn primary block" href="{{ url_for('owner_bills') }}" style="margin:12px 0 0;height:52px;font-size:17px">
+  發送{{ month_label(period) }}繳費單{% if unbilled %}（{{ unbilled }} 間尚未發送）{% endif %}
+</a>
 
 {% if login_locked %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">

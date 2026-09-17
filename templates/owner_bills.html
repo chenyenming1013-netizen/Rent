@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, meter_art %}
+{% block title %}發送繳費單｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
+{{ banner('發送' ~ month_label(period) ~ '繳費單', '填好金額後一鍵發送', meter_art(), 'sky') }}
+
+<form method="post" class="stack" style="margin:0">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="panel" style="margin-top:0">
+    <label for="elec_month">這次的電費屬於哪個月份</label>
+    <select id="elec_month" name="elec_month" onchange="location.href='?elec_month='+this.value">
+      {% for m in months %}<option value="{{ m }}" {% if m == elec_month %}selected{% endif %}>{{ month_label(m) }}電費（{{ m }}）</option>{% endfor %}
+    </select>
+    <p class="muted small" style="margin:6px 0 0">電費帳單晚到時，選上個月，就會以「{{ month_label(months[1]) }}電費」加進這期繳費單。電費單價參考：每度 {{ rate }} 元。</p>
+  </div>
+
+  <p class="muted small">月租已自動帶入。<strong>月租和電費都清空的房間不會收到通知</strong>；電費沒填的房間，繳費單上就不會有電費。</p>
+
+  {% for row in rows %}
+  {% set r = row.room %}{% set ri = row.rent_item %}{% set ei = row.elec_item %}
+  <div class="room-card bill-card">
+    <div class="rc-top">
+      <span class="rc-name"><span class="bdot" style="background:{{ r.color[1] }}"></span>{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
+      <span class="muted small">{{ row.tenant.name }}</span>
+    </div>
+    <div class="row2">
+      <div><label for="rent_{{ r.id }}">{{ month_label(period) }}月租</label>
+        {% if ri and ri.state != 'unpaid' %}
+        <div class="readonly"><span>{{ ri.amount|money }}</span><span class="pill {{ 'ok' if ri.state == 'paid' else 'wait' }}">{{ '已繳清' if ri.state == 'paid' else '已通知' }}</span></div>
+        {% else %}
+        <input id="rent_{{ r.id }}" name="rent_{{ r.id }}" type="number" min="0" inputmode="numeric"
+               value="{{ ri.amount if ri else r.rent }}">
+        {% endif %}</div>
+      <div><label for="elec_{{ r.id }}">{{ month_label(elec_month) }}電費</label>
+        {% if ei and ei.state != 'unpaid' %}
+        <div class="readonly"><span>{{ ei.amount|money }}</span><span class="pill {{ 'ok' if ei.state == 'paid' else 'wait' }}">{{ '已繳清' if ei.state == 'paid' else '已通知' }}</span></div>
+        {% else %}
+        <input id="elec_{{ r.id }}" name="elec_{{ r.id }}" type="number" min="0" inputmode="numeric"
+               value="{{ ei.amount if ei else '' }}" placeholder="不收可留空">
+        {% endif %}</div>
+    </div>
+    <input name="note_{{ r.id }}" maxlength="60" placeholder="電費備註（選填），例：1527→1640 度" value="{{ ei.note if ei else '' }}" style="margin-top:8px">
+    <div class="muted small" style="margin-top:8px">
+      {% if row.bill %}已發送過本月繳費單・{% endif %}
+      {% if row.carry %}前期未繳：{% for i in row.carry %}{{ i.label }} {{ i.amount|money }}{{ '、' if not loop.last }}{% endfor %}（會自動列在房客繳費單上）{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><p class="muted" style="margin:0">目前沒有已綁定房客的房間。</p></div>
+  {% endfor %}
+
+  {% if rows %}
+  <button class="btn primary block" onclick="return confirm('確定發送繳費單？房客打開網頁就會看到。')">一鍵發送繳費單</button>
+  <p class="muted small">重複發送會更新尚未付款的金額，已付款或房客已通知的項目不會被更改。</p>
+  {% endif %}
+</form>
+{% endblock %}
