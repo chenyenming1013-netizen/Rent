@@ -1,0 +1,44 @@
+{# 確認收款表單：實收與應付不同時，要選差額處理方式 #}
+{% macro confirm_form(p, back='') -%}
+<form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-box" data-due="{{ p.due }}" data-bill="{{ 1 if p.is_bill else 0 }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="action" value="confirm">
+  {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+  <div class="confirm-form">
+    <label class="small" for="rcv{{ p.id }}">實收</label>
+    <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}" data-rcv>
+    <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
+    <button class="btn small primary">確認收款</button>
+  </div>
+  <div class="diff-box" data-less hidden>
+    <div class="small"><strong class="warn-text">少收 <span data-amt></span> 元</strong>，要怎麼處理？</div>
+    <label class="radio"><input type="radio" name="diff_choice" value="carry"> 差額轉到下期（房客繳費單會出現）</label>
+    <label class="radio"><input type="radio" name="diff_choice" value="waive"> 視為繳清，不再追收</label>
+  </div>
+  <div class="diff-box" data-more hidden>
+    <div class="small"><strong class="ok-text">多收 <span data-amt></span> 元</strong>，要怎麼處理？</div>
+    <label class="radio"><input type="radio" name="diff_choice" value="credit"> 折抵下期</label>
+    <label class="radio"><input type="radio" name="diff_choice" value="ignore"> 不處理</label>
+  </div>
+</form>
+{%- endmacro %}
+
+{% macro confirm_script() -%}
+<script>
+(function(){
+  document.querySelectorAll('.confirm-box').forEach(function(f){
+    var due = +f.dataset.due, isBill = f.dataset.bill === '1';
+    var rcv = f.querySelector('[data-rcv]'), less = f.querySelector('[data-less]'), more = f.querySelector('[data-more]');
+    function sync(){
+      var d = (+rcv.value || 0) - due;
+      less.hidden = !(isBill && d < 0); more.hidden = !(isBill && d > 0);
+      [less, more].forEach(function(box){
+        box.querySelectorAll('input').forEach(function(r){ r.required = !box.hidden; if (box.hidden) r.checked = false; });
+        var a = box.querySelector('[data-amt]'); if (a) a.textContent = Math.abs(d).toLocaleString('zh-TW');
+      });
+    }
+    rcv.addEventListener('input', sync); sync();
+  });
+})();
+</script>
+{%- endmacro %}

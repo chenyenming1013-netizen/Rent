@@ -24,10 +24,15 @@
 <form method="post" class="panel stack" style="margin-top:0">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <h3>勾選這次要繳的項目</h3>
+  <p class="muted small" style="margin:4px 0 0">溢繳折抵會自動一起結算。</p>
   {% for i in payable %}
   <label class="chk item-chk">
+    {% if i.amount < 0 %}
+    <input type="checkbox" checked disabled data-amt="{{ i.amount }}" data-credit>
+    {% else %}
     <input type="checkbox" name="item" value="{{ i.id }}" data-amt="{{ i.amount }}"
            {% if chosen is none or (i.id|string) in chosen %}checked{% endif %}>
+    {% endif %}
     <span class="item-name">{{ i.label }}{% if i.month < (today.strftime('%Y-%m')) %}<span class="small warn-text">（{{ month_label(i.month) }}份尚未繳清）</span>{% endif %}</span>
     <span class="item-amt">{{ i.amount|money }}</span>
   </label>
@@ -39,11 +44,14 @@
 </form>
 <script>
 (function(){
-  var boxes = document.querySelectorAll('input[name=item]'), total = document.querySelector('[data-total]');
+  var boxes = document.querySelectorAll('input[name=item]'), credits = document.querySelectorAll('[data-credit]');
+  var total = document.querySelector('[data-total]');
   var auto = !total.value;
   total.addEventListener('input', function(){ auto = false; });
   function calc(){
-    var s = 0; boxes.forEach(function(b){ if (b.checked) s += +b.dataset.amt; });
+    var s = 0, any = false;
+    boxes.forEach(function(b){ if (b.checked) { s += +b.dataset.amt; any = true; } });
+    if (any) credits.forEach(function(c){ s += +c.dataset.amt; });
     document.getElementById('sum').textContent = s.toLocaleString('zh-TW') + ' 元';
     if (auto) total.value = s || '';
   }

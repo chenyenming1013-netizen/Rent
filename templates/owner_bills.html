@@ -64,7 +64,9 @@
   {% endfor %}
 
   {% if rows %}
-  <button class="btn primary block" onclick="return confirm('確定發送繳費單？房客打開網頁就會看到，電費房間會同時看到台電公告電價。')">一鍵發送繳費單</button>
+  <label class="chk"><input type="checkbox" name="announce" value="1" checked> 同時在 LINE 公告群組通知「繳費單已發出」（不含房號與金額）</label>
+  <input type="hidden" name="announce" value="0">
+  <button class="btn primary block" onclick="return confirm('確定發送繳費單？')">一鍵發送繳費單</button>
   <p class="muted small">重複發送會更新尚未付款的金額；已繳清或待確認的項目不會被更改。</p>
   {% endif %}
 </form>

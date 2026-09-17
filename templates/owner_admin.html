@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, lock_art %}
+{% block title %}系統設定｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
+{{ banner('系統設定', '只有管理者看得到這一頁', lock_art(), 'sky') }}
+
+<h2>LINE 官方帳號</h2>
+<div class="panel" style="margin-top:0">
+  {% if line_on %}
+  <p style="margin:0"><span class="st st-ok">✓ 已設定金鑰</span></p>
+  {% else %}
+  <p style="margin:0"><span class="st st-due">！尚未設定</span></p>
+  <p class="small">請在 PythonAnywhere 的 WSGI 檔加入 <code>LINE_CHANNEL_SECRET</code> 和 <code>LINE_CHANNEL_ACCESS_TOKEN</code>，存檔後按 Reload。</p>
+  {% endif %}
+  <label>Webhook URL（填到 LINE Developers → Messaging API）</label>
+  <div class="readonly" style="word-break:break-all"><span>{{ callback_url }}</span></div>
+</div>
+
+<h2>綁定 LINE</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">按下按鈕產生六位數綁定碼，{{ minutes }} 分鐘內有效、只能用一次。請對方加入 {{ LINE_BASIC_ID }} 好友後，在一對一聊天室傳送指令。</p>
+  {% for kind, label, cmd in [('landlord','房東','房東'),('admin','管理者（你自己）','管理者'),('group','公告群組','設定公告群組')] %}
+  <div class="list-item list-head">
+    <span><strong>{{ label }}</strong>
+      {% if kind == 'group' %}<span class="st {{ 'st-ok' if group_set else 'st-none' }}" style="font-size:12px">{{ '已設定' if group_set else '未設定' }}</span>{% endif %}
+      {% if codes.get(kind) %}<br><span class="small">請傳送：</span><code class="bindcode">{{ cmd }} {{ codes[kind] }}</code>
+        {% if kind == 'group' %}<br><span class="muted small">先把官方帳號邀進群組，再由你在群組裡傳這行。</span>{% endif %}{% endif %}
+    </span>
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="code_{{ kind }}">
+      <button class="btn small">產生綁定碼</button></form>
+  </div>
+  {% endfor %}
+  <div class="btn-row">
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test_group"><button class="btn small" {% if not group_set %}disabled{% endif %}>測試群組通知</button></form>
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test_me"><button class="btn small">傳測試訊息給我</button></form>
+    {% if group_set %}<form method="post" onsubmit="return confirm('清除公告群組設定？')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="clear_group"><button class="btn small danger">清除群組設定</button></form>{% endif %}
+  </div>
+</div>
+
+<h2>已綁定的 LINE（{{ users|length }}）</h2>
+<div class="panel">
+  {% for u in users %}
+  <div class="list-item list-head">
+    <span>{{ {'tenant':'房客','landlord':'房東','admin':'管理者'}[u.role] }}
+      {% if u.tenant %}・{{ u.tenant.name }}（{{ u.tenant.room_id and u.tenant.active and '在住' or '已退租' }}）{% endif %}
+      <span class="muted small">・{{ u.created_at.strftime('%Y/%m/%d') }}</span></span>
+    <form method="post" onsubmit="return confirm('解除這個 LINE 綁定？')"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="unbind"><input type="hidden" name="uid" value="{{ u.user_id }}">
+      <button class="btn link small">解除</button></form>
+  </div>
+  {% else %}<p class="muted" style="margin:0">還沒有人綁定。</p>{% endfor %}
+</div>
+
+<h2>房東帳號</h2>
+<div class="panel">
+  <p style="margin:0">房東密碼：<span class="st {{ 'st-ok' if landlord_set else 'st-due' }}" style="font-size:12px">{{ '已設定' if landlord_set else '尚未設定' }}</span></p>
+  <p class="muted small">房東用這組密碼從「屋主連結」登入，可以發送繳費單、確認收款、查看總覽，但不能修改房間或系統設定。</p>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="landlord_pw">
+    <div class="row2">
+      <div><label for="lp1">{{ '重設' if landlord_set else '設定' }}房東密碼</label><input id="lp1" name="new" type="password" minlength="10" autocomplete="new-password" required></div>
+      <div><label for="lp2">再輸入一次</label><input id="lp2" name="new2" type="password" minlength="10" autocomplete="new-password" required></div>
+    </div>
+    <button class="btn block">儲存房東密碼</button>
+  </form>
+  <form method="post" class="stack" style="margin-top:14px">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="contact">
+    <label for="contact">房東聯絡方式（房客傳訊息給官方帳號時的自動回覆）</label>
+    <input id="contact" name="contact" maxlength="80" value="{{ contact }}" placeholder="例：電話 09xx-xxx-xxx">
+    <button class="btn block">儲存聯絡方式</button>
+  </form>
+</div>
+
+<h2>每日提醒排程</h2>
+<div class="panel">
+  {% if cron_url %}
+  <p class="small" style="margin-top:0">在 cron-job.org 建立排程，每天早上 9:00（Asia/Taipei）呼叫這個網址：</p>
+  <div class="readonly" style="word-break:break-all"><code>{{ cron_url }}</code></div>
+  <p class="muted small">這個網址含有密鑰，請勿分享。</p>
+  {% else %}
+  <p class="small" style="margin-top:0"><span class="st st-due">！尚未設定</span> 請在 WSGI 檔加入 <code>CRON_KEY</code>（一串隨機英數字），存檔後按 Reload。</p>
+  {% endif %}
+  <p style="margin:8px 0 0">上次執行：{{ cron_last or '從未執行' }}
+    {% if cron_stale %}<span class="st st-due" style="font-size:12px">！超過一天沒有執行</span>{% endif %}</p>
+  <form method="post" style="margin-top:8px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="run_daily">
+    <button class="btn small">立即執行一次（測試）</button></form>
+</div>
+
+<h2>最近的推播紀錄</h2>
+<div class="panel">
+  {% for n in notices %}
+  <div class="list-item small">
+    <span class="{{ 'ok-text' if n.ok else 'warn-text' }}">{{ '成功' if n.ok else '失敗' }}</span>
+    {{ n.at.strftime('%m/%d %H:%M') }}・{{ n.kind }}{% if n.detail %}<br><span class="muted">{{ n.detail }}</span>{% endif %}
+  </div>
+  {% else %}<p class="muted" style="margin:0">還沒有推播紀錄。</p>{% endfor %}
+</div>
+{% endblock %}

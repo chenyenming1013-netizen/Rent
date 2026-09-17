@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "_art.html" import banner, house %}
-{% block title %}{{ room.name }}｜租屋小幫手{% endblock %}
+{% from "_confirm.html" import confirm_form, confirm_script %}
+{% block title %}{{ room.name }}｜租屋小幫手{{ confirm_script() }}
+{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
 {% call banner(room.name, ('房客：' ~ tenant.name ~ ('（已核對）' if tenant.verified else '（尚未核對）')) if tenant else ('空房' if room.active else '已停用'), house(room.color), room.color[2]) %}
@@ -18,18 +20,18 @@
     <div style="font-size:30px;font-weight:700;letter-spacing:.25em">{{ room.code }}</div>
     {% endif %}
   </div>
-  <form method="post" onsubmit="return confirm('換新密碼後，目前的房客要用新密碼重新登入。確定？')">
+  {% if is_admin %}<form method="post" onsubmit="return confirm('換新密碼後，目前的房客要用新密碼重新登入。確定？')">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="new_code">
     <button class="btn small">產生新密碼</button>
-  </form>
+  </form>{% endif %}
 </div>
 {% endif %}
 
 {% if tenant and not tenant.verified %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
   <span>{{ tenant.name }} 於 {{ tenant.created_at.strftime('%m/%d %H:%M') }} 綁定，請確認是你的房客。</span>
-  <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="verify">
-    <button class="btn small primary">確認是我的房客</button></form>
+  {% if is_admin %}<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="verify">
+    <button class="btn small primary">確認是我的房客</button></form>{% endif %}
 </div>
 {% endif %}
 
@@ -38,6 +40,7 @@
 <form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="action" value="save">
+  <fieldset {% if not is_admin %}disabled{% endif %} style="border:0;padding:0;margin:0">
   <div class="row2">
     <div><label for="room_type">房型</label>
       <select id="room_type" name="room_type">{% for t in types %}<option {% if t == room.room_type %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
@@ -69,7 +72,8 @@
   </div>
   {% endif %}
   <p class="muted small" style="margin:10px 0 0">押金 {{ room.deposit|money }}</p>
-  <button class="btn primary block">儲存</button>
+  {% if is_admin %}<button class="btn primary block">儲存</button>{% else %}<p class="muted small">基本資料由管理者修改。</p>{% endif %}
+  </fieldset>
 </form>
 </div>
 
@@ -99,14 +103,7 @@
       <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ p.status }}</span></div>
     <div class="muted small">{{ p.detail }}・回報 {{ p.total|money }}{% if p.received is not none %}・實收 {{ p.received|money }}{% endif %}・{{ p.pay_info }}{% if p.confirm_note %}・{{ p.confirm_note }}{% endif %}</div>
     {% if not p.confirmed %}
-    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="action" value="confirm"><input type="hidden" name="back" value="room">
-      <label class="small" for="rcv{{ p.id }}">實收</label>
-      <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
-      <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
-      <button class="btn small primary">確認收款</button>
-    </form>
+    {{ confirm_form(p, 'room') }}
     <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin-top:6px"
           onsubmit="return confirm('刪除這筆回報？刪除後無法復原。')">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -118,6 +115,7 @@
   {% else %}<p class="muted" style="margin:0">還沒有紀錄。</p>{% endfor %}
 </div>
 
+{% if is_admin %}
 <h2>退租</h2>
 <div class="panel">
   <p class="muted small" style="margin-top:0">解除綁定後房間變回空房、自動換新密碼，繳費紀錄會保留。</p>
@@ -126,6 +124,7 @@
     <button class="btn danger">解除綁定（退租）</button>
   </form>
 </div>
+{% endif %}
 {% endif %}
 
 {% if past_pending %}
@@ -136,14 +135,8 @@
     <div class="list-head"><strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
       <span class="muted small">{{ p.tenant.name }} <span class="pill late">已退租</span></span></div>
     <div class="muted small">{{ p.detail }}・回報 {{ p.total|money }}・{{ p.pay_info }}</div>
+    {{ confirm_form(p, 'room') }}
     <div class="confirm-form">
-      <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form" style="margin:0">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <input type="hidden" name="action" value="confirm"><input type="hidden" name="back" value="room">
-        <label class="small" for="prcv{{ p.id }}">實收</label>
-        <input id="prcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
-        <button class="btn small primary">確認收款</button>
-      </form>
       <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin:0"
             onsubmit="return confirm('刪除這筆回報？刪除後無法復原。')">
         <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -165,6 +158,7 @@
 </div>
 {% endif %}
 
+{% if is_admin %}
 <h2>{{ '刪除或停用房間' if room.active else '重新啟用' }}</h2>
 <div class="panel">
   {% if not room.active %}
@@ -183,6 +177,7 @@
     <button class="btn" {% if tenant %}disabled{% endif %}>停用這間房</button></form>
   {% endif %}
 </div>
+{% endif %}
 <script>
 (function(){
   var s = document.querySelector('[data-building]'), box = document.querySelector('[data-newb]');
@@ -191,4 +186,5 @@
   s.addEventListener('change', sync); sync();
 })();
 </script>
+{{ confirm_script() }}
 {% endblock %}

@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% from "_art.html" import mini_hero %}
-{% block title %}租屋總覽｜租屋小幫手{% endblock %}
+{% from "_confirm.html" import confirm_form, confirm_script %}
+{% block title %}租屋總覽｜租屋小幫手{{ confirm_script() }}
+{% endblock %}
 {% block content %}
 <div class="topbar">
-  <span class="muted small">租屋小幫手・屋主</span>
+  <span class="muted small">租屋小幫手・{{ '管理者' if is_admin else '房東' }}</span>
   <div style="display:flex;gap:16px;align-items:center">
+    {% if is_admin %}<a class="back" href="{{ url_for('owner_admin') }}">系統設定</a>{% endif %}
     <a class="back" href="{{ url_for('owner_password') }}">修改密碼</a>
     <form method="post" action="{{ url_for('owner_logout') }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -30,10 +33,10 @@
 {% if login_locked %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
   <span>密碼錯誤次數太多，房客登入已暫停。已登入的房客不受影響。</span>
-  <form method="post" action="{{ url_for('owner_reopen') }}">
+  {% if is_admin %}<form method="post" action="{{ url_for('owner_reopen') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="btn small">重新開放</button>
-  </form>
+  </form>{% else %}<span class="small">請通知管理者處理。</span>{% endif %}
 </div>
 {% endif %}
 
@@ -51,14 +54,7 @@
       <div class="muted small"><span>{{ p.detail }}</span>
         <span>{% if p.total != p.due %}<span class="mismatch">{{ '少' if p.total < p.due else '多' }} {{ (p.due - p.total)|abs|money }}</span>{% else %}應付 {{ p.due|money }}{% endif %}</span></div>
     </div>
-    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="action" value="confirm">
-      <label class="small" for="rcv{{ p.id }}">實收</label>
-      <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
-      <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
-      <button class="btn small primary">確認收款</button>
-    </form>
+    {{ confirm_form(p) }}
     <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin-top:6px"
           onsubmit="return confirm('刪除這筆回報？刪除後無法復原。適用於測試資料或房客填錯的回報。')">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -72,7 +68,7 @@
 
 <div class="section-head">
   <h2>房間列表（{{ rooms|length }} 間）</h2>
-  <a class="btn small primary" href="{{ url_for('owner_room_new') }}">＋ 新增房間</a>
+  {% if is_admin %}<a class="btn small primary" href="{{ url_for('owner_room_new') }}">＋ 新增房間</a>{% endif %}
 </div>
 <div class="legend-row">
   <span class="st st-due">！費用待繳</span>
@@ -100,7 +96,7 @@
     </dl>
     <div class="rc-btns">
       {% if s[2] %}<a class="btn small primary" href="#pay{{ s[2] }}">確認收款</a>{% endif %}
-      <a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">管理</a>
+      <a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">{{ '管理' if is_admin else '查看' }}</a>
     </div>
   </div>
 {% endfor %}
@@ -153,4 +149,5 @@
     <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ entry }}').then(()=>this.textContent='已複製')">複製網址</button>
   </details>
 </div>
+{{ confirm_script() }}
 {% endblock %}

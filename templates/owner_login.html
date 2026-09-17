@@ -2,7 +2,7 @@
 {% from "_art.html" import mini_hero %}
 {% block title %}屋主登入｜租屋小幫手{% endblock %}
 {% block content %}
-{{ mini_hero('租屋小幫手', '屋主登入') }}
+{{ mini_hero('租屋小幫手', '房東／管理者登入') }}
 <div class="flash warn" role="note">
   <strong>此頁面僅供房東使用，房客請勿點選。</strong><br>
   錯誤嘗試會被記錄，連續錯誤將暫停登入。
@@ -10,7 +10,7 @@
 <div class="panel" style="margin-top:0">
 <form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label for="password">屋主密碼</label>
+  <label for="password">房東或管理者密碼</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <button class="btn primary block">登入</button>
