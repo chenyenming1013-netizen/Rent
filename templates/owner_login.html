@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% block title %}屋主登入{% endblock %}
+{% from "_art.html" import mini_hero %}
+{% block title %}屋主登入｜租屋小幫手{% endblock %}
 {% block content %}
-<a class="back" href="{{ url_for('index') }}">← 回首頁</a>
-<h1>屋主登入</h1>
+{{ mini_hero('租屋小幫手', '屋主登入') }}
 <div class="flash warn" role="note">
   <strong>此頁面僅供房東使用，房客請勿點選。</strong><br>
-  房客請回首頁點「我是房客」。錯誤嘗試會被記錄，連續錯誤將暫停登入。
+  錯誤嘗試會被記錄，連續錯誤將暫停登入。
 </div>
-<div class="panel">
+<div class="panel" style="margin-top:0">
 <form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label for="password">密碼</label>
+  <label for="password">屋主密碼</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <button class="btn primary block">登入</button>
 </form>
 </div>
 {% if default_pw %}
-<p class="flash warn" style="margin-top:14px">目前使用預設密碼 admin。上線前請設定環境變數 OWNER_PASSWORD。</p>
+<p class="flash warn" style="margin-top:14px">目前使用預設密碼 admin，上線前請設定 OWNER_PASSWORD。</p>
 {% endif %}
 {% endblock %}

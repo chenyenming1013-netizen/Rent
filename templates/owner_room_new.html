@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_art.html" import mini_hero %}
+{% from "_pay.html" import err with context %}
+{% block title %}新增房間｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
+{{ mini_hero('新增房間', '加入新的物件或房間') }}
+{% set v = form if form else {} %}
+<div class="panel" style="margin-top:0">
+<form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="building">物件（大樓）</label>
+  <select id="building" name="building" data-building>
+    {% for b in buildings %}<option {% if v.get('building') == b %}selected{% endif %}>{{ b }}</option>{% endfor %}
+    <option value="__new__" {% if v.get('building') == '__new__' or not buildings %}selected{% endif %}>＋ 新增物件…</option>
+  </select>
+  <div data-newb><label for="new_building">新物件名稱</label>
+    <input id="new_building" name="new_building" maxlength="20" value="{{ v.get('new_building','') }}"></div>
+  {{ err(errors, 'building') }}
+  <div class="row2">
+    <div><label for="name">房號／名稱</label><input id="name" name="name" maxlength="20" required value="{{ v.get('name','') }}" placeholder="例：憲政 05">{{ err(errors, 'name') }}</div>
+    <div><label for="room_type">房型</label>
+      <select id="room_type" name="room_type">{% for t in types %}<option {% if v.get('room_type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+      {{ err(errors, 'room_type') }}</div>
+  </div>
+  <div class="row2">
+    <div><label for="rent">月租</label><input id="rent" name="rent" type="number" min="0" value="{{ v.get('rent','') }}"></div>
+    <div><label for="deposit_months">押金月數</label><input id="deposit_months" name="deposit_months" type="number" min="0" value="{{ v.get('deposit_months','2') }}"></div>
+  </div>
+  <label for="meter_start">目前電表度數</label>
+  <input id="meter_start" name="meter_start" type="number" min="0" value="{{ v.get('meter_start','0') }}">
+  <div class="hint">建立後系統會自動產生一組四位數房客密碼，房間狀態為「空房」。</div>
+  <button class="btn primary block">建立房間</button>
+</form>
+</div>
+
+<h2 id="types">房型選項</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">新增或修改房間時可選的房型。點房型可以刪除（有房間使用中的不能刪）。</p>
+  <div class="tag-row">
+    {% for t in types %}
+    <form method="post" action="{{ url_for('owner_room_types') }}" onsubmit="return confirm('刪除房型「{{ t }}」？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="remove">
+      <input type="hidden" name="name" value="{{ t }}">
+      <button class="tag-btn" title="刪除">{{ t }} ×</button>
+    </form>
+    {% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('owner_room_types') }}" class="confirm-form" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="add">
+    <input name="name" placeholder="新房型名稱" maxlength="10" style="width:170px" required>
+    <button class="btn small">加入</button>
+  </form>
+</div>
+<script>
+(function(){
+  var s = document.querySelector('[data-building]'), box = document.querySelector('[data-newb]');
+  function sync(){ box.style.display = s.value === '__new__' ? '' : 'none'; }
+  s.addEventListener('change', sync); sync();
+})();
+</script>
+{% endblock %}

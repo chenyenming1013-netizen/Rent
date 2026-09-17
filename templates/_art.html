@@ -1,0 +1,117 @@
+{# 插圖與圖示 #}
+{% macro city() -%}
+<svg class="home-city" viewBox="0 0 520 160" role="img" aria-label="亮色系公寓插圖">
+    <circle cx="458" cy="30" r="26" fill="#FFD447" opacity=".25"/>
+    <circle cx="458" cy="30" r="18" fill="#FFD447"/>
+    <g fill="#FFFFFF">
+      <ellipse cx="70" cy="26" rx="26" ry="10"/><ellipse cx="88" cy="20" rx="16" ry="10"/>
+      <ellipse cx="360" cy="18" rx="22" ry="8"/><ellipse cx="376" cy="13" rx="13" ry="8"/>
+    </g>
+    <rect x="28" y="62" width="122" height="94" rx="6" fill="#FFB4A2"/>
+    <rect x="22" y="54" width="134" height="12" rx="4" fill="#F2785C"/>
+    <g fill="#FFFFFF">
+      <rect x="44" y="78" width="22" height="18" rx="3"/><rect x="78" y="78" width="22" height="18" rx="3" fill="#FFF3B0"/><rect x="112" y="78" width="22" height="18" rx="3"/>
+      <rect x="44" y="108" width="22" height="18" rx="3" fill="#FFF3B0"/><rect x="112" y="108" width="22" height="18" rx="3"/>
+    </g>
+    <rect x="78" y="118" width="22" height="38" rx="4" fill="#F2785C"/>
+    <rect x="170" y="34" width="150" height="122" rx="6" fill="#9ED8F5"/>
+    <polygon points="160,38 245,6 330,38" fill="#3E9BD6"/>
+    <g fill="#FFFFFF">
+      <rect x="188" y="52" width="26" height="20" rx="3" fill="#FFF3B0"/><rect x="232" y="52" width="26" height="20" rx="3"/><rect x="276" y="52" width="26" height="20" rx="3" fill="#FFF3B0"/>
+      <rect x="188" y="84" width="26" height="20" rx="3"/><rect x="232" y="84" width="26" height="20" rx="3" fill="#FFF3B0"/><rect x="276" y="84" width="26" height="20" rx="3"/>
+    </g>
+    <rect x="229" y="116" width="32" height="40" rx="5" fill="#3E9BD6"/>
+    <circle cx="255" cy="137" r="2.5" fill="#FFFFFF"/>
+    <rect x="340" y="74" width="142" height="82" rx="6" fill="#A8E6C9"/>
+    <rect x="334" y="66" width="154" height="12" rx="4" fill="#3FB984"/>
+    <g fill="#FFFFFF">
+      <rect x="356" y="90" width="22" height="18" rx="3" fill="#FFF3B0"/><rect x="390" y="90" width="22" height="18" rx="3"/><rect x="424" y="90" width="22" height="18" rx="3" fill="#FFF3B0"/><rect x="458" y="90" width="14" height="18" rx="3"/>
+    </g>
+    <rect x="400" y="120" width="24" height="36" rx="4" fill="#3FB984"/>
+    <circle cx="160" cy="134" r="13" fill="#6CCB7B"/><rect x="159" y="140" width="3" height="16" fill="#8A6A4A"/>
+    <circle cx="330" cy="132" r="15" fill="#6CCB7B"/><rect x="329" y="140" width="3" height="16" fill="#8A6A4A"/>
+    <circle cx="120" cy="154" r="3" fill="#FF8FB1"/><circle cx="200" cy="154" r="3" fill="#FFD447"/><circle cx="300" cy="154" r="3" fill="#FF8FB1"/><circle cx="450" cy="154" r="3" fill="#FFD447"/>
+    <g transform="translate(496 118) rotate(16)">
+      <rect x="-14" y="-4" width="28" height="36" rx="6" fill="#FFFFFF" stroke="#F2785C" stroke-width="2"/>
+      <circle cx="0" cy="4" r="3" fill="none" stroke="#F2785C" stroke-width="2"/>
+      <text x="0" y="23" text-anchor="middle" font-size="9" fill="#F2785C">01</text>
+    </g>
+    <rect x="0" y="156" width="520" height="4" fill="#CDEBC4"/>
+  </svg>
+{%- endmacro %}
+
+{% macro house(color) -%}
+<svg class="art" viewBox="0 0 120 90" aria-hidden="true">
+<circle cx="100" cy="16" r="10" fill="#FFD447"/><ellipse cx="26" cy="14" rx="14" ry="5" fill="#fff"/>
+<rect x="24" y="30" width="62" height="56" rx="4" fill="{{ color[0] }}"/><polygon points="16,32 55,8 94,32" fill="{{ color[1] }}"/>
+<rect x="32" y="40" width="14" height="12" rx="2" fill="#FFF3B0"/><rect x="64" y="40" width="14" height="12" rx="2" fill="#fff"/>
+<rect x="48" y="60" width="14" height="26" rx="3" fill="{{ color[1] }}"/><circle cx="59" cy="74" r="1.5" fill="#fff"/>
+<circle cx="98" cy="72" r="10" fill="#6CCB7B"/><rect x="97" y="76" width="2" height="10" fill="#8A6A4A"/>
+<rect x="0" y="86" width="120" height="4" fill="#CDEBC4"/></svg>
+{%- endmacro %}
+
+{% macro rent_art() -%}
+<svg class="art" viewBox="0 0 120 90" aria-hidden="true">
+<rect x="10" y="34" width="54" height="50" rx="4" fill="#9ED8F5"/><polygon points="4,36 37,12 70,36" fill="#3E9BD6"/>
+<rect x="30" y="58" width="14" height="26" rx="3" fill="#3E9BD6"/><rect x="18" y="44" width="12" height="10" rx="2" fill="#FFF3B0"/><rect x="44" y="44" width="12" height="10" rx="2" fill="#fff"/>
+<ellipse cx="92" cy="78" rx="20" ry="6" fill="#E8A800"/><rect x="72" y="66" width="40" height="12" fill="#FFD447"/><ellipse cx="92" cy="66" rx="20" ry="6" fill="#FFE27A"/>
+<rect x="72" y="54" width="40" height="12" fill="#FFD447"/><ellipse cx="92" cy="54" rx="20" ry="6" fill="#FFE27A"/>
+<text x="92" y="58" text-anchor="middle" font-size="9" font-weight="700" fill="#9A6B00">$</text>
+<rect x="0" y="86" width="120" height="4" fill="#CDEBC4"/></svg>
+{%- endmacro %}
+
+{% macro meter_art() -%}
+<svg class="art" viewBox="0 0 120 90" aria-hidden="true">
+<rect x="14" y="10" width="56" height="74" rx="8" fill="#FFFFFF" stroke="#3E9BD6" stroke-width="3"/>
+<rect x="22" y="20" width="40" height="16" rx="3" fill="#1C2733"/>
+<text x="42" y="32" text-anchor="middle" font-size="11" fill="#9EF0B8" font-family="monospace">0000</text>
+<circle cx="42" cy="58" r="14" fill="#DDF1FF"/><path d="M44 47 36 60h6l-2 10 9-14h-6z" fill="#F2A900"/>
+<g transform="translate(92 40)"><circle r="16" fill="#FFF3B0"/><circle r="11" fill="#FFD447"/>
+<rect x="-5" y="12" width="10" height="8" rx="2" fill="#9AA5B1"/>
+<path d="M0 -24v-6M-18 -16l-4 -4M18 -16l4 -4M-24 0h-6M24 0h6" stroke="#F2A900" stroke-width="2.5" stroke-linecap="round"/></g>
+<rect x="0" y="86" width="120" height="4" fill="#CDEBC4"/></svg>
+{%- endmacro %}
+
+{% macro lock_art() -%}
+<svg class="art" viewBox="0 0 120 90" aria-hidden="true">
+<path d="M34 40V28a18 18 0 0 1 36 0v12" fill="none" stroke="#3E9BD6" stroke-width="7"/>
+<rect x="24" y="38" width="56" height="44" rx="8" fill="#9ED8F5"/>
+<circle cx="52" cy="56" r="6" fill="#1C2733"/><rect x="50" y="58" width="4" height="12" rx="2" fill="#1C2733"/>
+<g transform="translate(96 46) rotate(35)"><circle r="10" fill="none" stroke="#F2785C" stroke-width="5"/>
+<rect x="8" y="-3" width="26" height="6" rx="2" fill="#F2785C"/><rect x="26" y="3" width="4" height="6" fill="#F2785C"/><rect x="18" y="3" width="4" height="5" fill="#F2785C"/></g>
+<circle cx="14" cy="18" r="3" fill="#FFD447"/><circle cx="104" cy="14" r="2" fill="#FFD447"/>
+<rect x="0" y="86" width="120" height="4" fill="#CDEBC4"/></svg>
+{%- endmacro %}
+
+{% macro welcome_art() -%}
+<svg class="art" viewBox="0 0 120 90" aria-hidden="true">
+<rect x="30" y="14" width="50" height="72" rx="4" fill="#A8E6C9"/><rect x="38" y="24" width="34" height="62" rx="3" fill="#3FB984"/>
+<circle cx="66" cy="56" r="2.5" fill="#FFD447"/><rect x="28" y="84" width="54" height="4" rx="2" fill="#F2785C"/>
+<g transform="translate(96 30)"><path d="M0 8c-8-10-18-2-10 8l10 10 10-10c8-10-2-18-10-8z" fill="#FF8FB1"/></g>
+<circle cx="14" cy="70" r="9" fill="#6CCB7B"/><rect x="13" y="74" width="2" height="12" fill="#8A6A4A"/>
+<text x="55" y="12" text-anchor="middle" font-size="9" fill="#3FB984">WELCOME</text>
+<rect x="0" y="86" width="120" height="4" fill="#CDEBC4"/></svg>
+{%- endmacro %}
+
+{% macro icon(name, size=24) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == 'key' %}<circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2"/>
+{%- elif name == 'building' %}<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>
+{%- elif name == 'cash' %}<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/>
+{%- elif name == 'bolt' %}<path d="M13 3 4 14h7l-1 7 9-11h-7z"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
+{% macro banner(title, sub, art, tone='sky') -%}
+<header class="banner {{ tone }}"><div><h1>{{ title }}</h1><p>{{ sub }}</p>{{ caller() if caller }}</div>{{ art }}</header>
+{%- endmacro %}
+
+{% macro mini_hero(title, sub) -%}
+<header class="mini-hero"><h1>{{ title }}</h1><p>{{ sub }}</p>{{ city() }}</header>
+{%- endmacro %}
+
+{% macro status_pill(p, empty_label='尚未回報') -%}
+{% if not p %}<span class="pill todo">{{ empty_label }}</span>
+{% elif p.status == '已確認' %}<span class="pill ok">已確認</span>
+{% else %}<span class="pill wait">等待房東確認</span>{% endif %}
+{%- endmacro %}

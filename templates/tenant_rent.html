@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, rent_art %}
+{% from "_pay.html" import payment_fields, err with context %}
+{% block title %}月租繳費｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
+{{ banner('月租繳費', room.name ~ '・' ~ period ~ ' 這期', rent_art(), 'warm') }}
+{% set v = form if form else {} %}
+{% set combine = (v.get('combine') == '1') if form else (pay and pay.kind == 'both') %}
+<form method="post" class="panel stack" style="margin-top:0">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="readonly"><span>本期應繳月租</span><span class="big">{{ room.rent|money }}</span></div>
+
+  {% if separate_elec %}
+  <p class="muted small" style="margin:12px 0 0">本期電費已另外回報，這裡只回報月租。</p>
+  {% else %}
+  <label class="chk"><input type="checkbox" name="combine" value="1" id="combine" {% if combine %}checked{% endif %}> 電費一起繳（同一筆轉帳）</label>
+  <div class="combo" id="combo-box" style="margin-top:6px">
+    <label for="meter_now" style="margin-top:4px">本月電表度數（上期 {{ meter_last|money }}）</label>
+    <input id="meter_now" name="meter_now" type="number" inputmode="numeric" min="{{ meter_last }}"
+           value="{{ v.get('meter_now') or (pay.meter_now if pay and pay.kind == 'both' else '') }}">
+    {{ err(errors, 'meter_now') }}
+    <div class="calc">
+      <div><span>月租</span><span>{{ room.rent|money }}</span></div>
+      <div><span>電費 <span id="usage">—</span> 度 × {{ '%g'|format(rate) }}</span><span id="elec">—</span></div>
+      <div class="sum"><span>應轉帳合計</span><span id="sum">—</span></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {{ payment_fields(form, pay, prev, errors, room.rent) }}
+  <button class="btn primary block">送出並通知房東</button>
+</form>
+
+<script>
+(function(){
+  var rent = {{ room.rent or 0 }}, rate = {{ rate }}, last = {{ meter_last }};
+  var cb = document.getElementById('combine'); if(!cb) return;
+  var box = document.getElementById('combo-box'), meter = document.getElementById('meter_now');
+  var total = document.querySelector('[data-total]');
+  var auto = !total.value || +total.value === rent;
+  var fmt = function(n){ return Math.round(n).toLocaleString('zh-TW'); };
+  function calc(){
+    box.style.display = cb.checked ? '' : 'none';
+    meter.required = cb.checked;
+    var due = rent;
+    if (cb.checked && meter.value !== '' && +meter.value >= last){
+      var u = +meter.value - last, e = Math.round(u * rate);
+      document.getElementById('usage').textContent = u;
+      document.getElementById('elec').textContent = fmt(e);
+      due = rent + e;
+      document.getElementById('sum').textContent = fmt(due);
+    } else {
+      document.getElementById('usage').textContent = '—';
+      document.getElementById('elec').textContent = meter.value !== '' ? '度數不能小於上期' : '—';
+      document.getElementById('sum').textContent = '—';
+    }
+    if (auto) total.value = due;
+  }
+  total.addEventListener('input', function(){ auto = false; });
+  cb.addEventListener('change', calc); meter.addEventListener('input', calc); calc();
+})();
+</script>
+{% endblock %}

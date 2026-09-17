@@ -1,17 +1,22 @@
 {% extends "base.html" %}
+{% from "_art.html" import city, icon %}
 {% block content %}
-<header class="hero">
-  <h1>房租繳費</h1>
-  <p class="muted">輝煌、民權、憲政，七間房的收費紀錄。</p>
+<header class="home-hero">
+  <h1>租屋小幫手</h1>
+  <p class="home-sub">基本資料及繳費訊息</p>
+  {{ city() }}
 </header>
-<nav class="doors">
-  <a class="door" href="{{ url_for('tenant_login') }}">
-    <span class="door-title">我是房客</span>
-    <span class="door-sub">輸入房東提供的密碼</span>
+<nav class="home-cards">
+  <a class="home-card" href="{{ url_for('tenant_login') }}">
+    <span class="home-ic" style="background:#DDF1FF;color:#2F7DB5">{{ icon('key', 26) }}</span>
+    <span class="home-txt"><span class="home-ct">房客連結</span><span class="home-cs">輸入房東提供的密碼</span></span>
+    <span class="home-go" aria-hidden="true">›</span>
   </a>
-  <a class="door owner" href="{{ url_for('owner_home') }}">
-    <span class="door-title">我是屋主</span>
-    <span class="door-sub">僅限房東使用</span>
+  <a class="home-card dark" href="{{ url_for('owner_home') }}">
+    <span class="home-ic" style="background:#33475B;color:#FFFFFF">{{ icon('building', 26) }}</span>
+    <span class="home-txt"><span class="home-ct">屋主連結</span><span class="home-cs">僅限房東使用</span></span>
+    <span class="home-go" aria-hidden="true">›</span>
   </a>
 </nav>
+<p class="home-foot">有問題請直接聯絡房東</p>
 {% endblock %}
