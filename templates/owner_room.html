@@ -7,8 +7,13 @@
 
 <h2>房客密碼</h2>
 <div class="panel">
+  {% if room.custom_code %}
+  <p style="margin:0"><strong>房客已自行修改密碼</strong></p>
+  <p class="muted small">基於隱私，你看不到房客自訂的密碼。房客忘記時，按「產生新密碼」再告訴他。</p>
+  {% else %}
   <p style="font-size:32px;font-weight:700;letter-spacing:.3em;margin:0">{{ room.code }}</p>
   <p class="muted small">私下告訴這間房的房客。空房時，輸入這組密碼的人會進入綁定畫面。</p>
+  {% endif %}
   <form method="post" onsubmit="return confirm('換新密碼後，目前的房客要用新密碼重新登入。確定？')">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="new_code">
     <button class="btn small">產生新密碼</button>

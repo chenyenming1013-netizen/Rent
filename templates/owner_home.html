@@ -3,10 +3,13 @@
 {% block content %}
 <div class="topbar">
   <a class="back" href="{{ url_for('index') }}">← 回首頁</a>
-  <form method="post" action="{{ url_for('owner_logout') }}">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="btn link">登出</button>
-  </form>
+  <div style="display:flex;gap:16px;align-items:center">
+    <a class="back" href="{{ url_for('owner_password') }}">修改密碼</a>
+    <form method="post" action="{{ url_for('owner_logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn link">登出</button>
+    </form>
+  </div>
 </div>
 <h1>七間房總覽</h1>
 {% if login_locked %}
@@ -30,7 +33,7 @@
       <td><strong>{{ r.name }}</strong></td>
       <td>{{ t.name if t else '—' }}{% if t and not t.verified %} <span class="pill wait">新綁定</span>{% endif %}</td>
       <td class="num">{{ r.rent|money }}</td>
-      <td><strong style="letter-spacing:.15em">{{ r.code }}</strong></td>
+      <td>{% if r.custom_code %}<span class="muted small">房客已自訂</span>{% else %}<strong style="letter-spacing:.15em">{{ r.code }}</strong>{% endif %}</td>
       <td><span class="pill {{ s[1] }}">{{ s[0] }}</span></td>
       <td><a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">管理</a></td>
     </tr>

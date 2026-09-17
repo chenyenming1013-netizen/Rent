@@ -50,6 +50,20 @@
       <button class="btn block">儲存個人資料</button>
     </form>
   </details>
+  <details style="margin-top:12px">
+    <summary>修改登入密碼</summary>
+    <form method="post" action="{{ url_for('tenant_code') }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="old_code">目前的密碼</label>
+      <input id="old_code" name="old_code" type="password" inputmode="numeric" maxlength="4" pattern="\d{4}" autocomplete="current-password" required>
+      <div class="row2">
+        <div><label for="ncode">新密碼（四位數）</label><input id="ncode" name="code" type="password" inputmode="numeric" maxlength="4" pattern="\d{4}" autocomplete="new-password" required></div>
+        <div><label for="ncode2">再輸入一次</label><input id="ncode2" name="code2" type="password" inputmode="numeric" maxlength="4" pattern="\d{4}" autocomplete="new-password" required></div>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">改完後房東看不到你的新密碼。忘記時請房東重設。請勿使用提款卡密碼。</p>
+      <button class="btn block">變更密碼</button>
+    </form>
+  </details>
   <p class="muted small" style="margin-top:12px">月租、押金、入住日由房東設定，需要調整請聯絡房東。</p>
 </div>
 

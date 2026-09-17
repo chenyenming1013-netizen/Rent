@@ -3,7 +3,7 @@
 角色：
   屋主端  /owner   用 OWNER_PASSWORD 登入，管理房間、確認收款
   房客端  /tenant  輸入房東提供的四位數密碼 → 空房先填資料綁定 → 進入自己的房間
-                   登入後記住一年，之後點「我是房客」會直接進入
+                   登入後記住一年，之後點「我是房客」會直接進入；房客可自行修改密碼
 """
 import hmac
 import io
@@ -16,6 +16,7 @@ import qrcode.image.svg
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
 from markupsafe import Markup
+from werkzeug.security import check_password_hash, generate_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
@@ -44,6 +45,8 @@ OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "admin")
 IP_MAX_FAILS = 5          # 同一個網路一小時內最多錯幾次
 GLOBAL_MAX_FAILS = 50     # 全部加起來錯這麼多次，就暫停房客登入，等屋主重新開放
 BIND_MINUTES = 15         # 輸入密碼後多久內要完成綁定
+OWNER_MAX_FAILS = 5       # 屋主登入一小時內最多錯幾次
+CHANGE_MAX_REJECTS = 3    # 房客改密碼時，一天內最多被拒絕幾次
 DEFAULT_ROOMS = [
     ("輝煌", "輝煌"),
     ("民權", "民權 A"), ("民權", "民權 B"),
@@ -64,13 +67,26 @@ class Room(db.Model):
     rent = db.Column(db.Integer, default=0)            # 月租
     deposit_months = db.Column(db.Integer, default=2)  # 押金月數
     meter_start = db.Column(db.Integer, default=0)     # 入住時電表度數
-    code = db.Column(db.String(8))                     # 房東給房客的四位數密碼
+    code = db.Column(db.String(8))                     # 房東產生的密碼（明碼，房東看得到）
+    code_hash = db.Column(db.String(255))              # 房客自訂的密碼（只存雜湊）
     failed = db.Column(db.Integer, default=0)
     locked = db.Column(db.Boolean, default=False)
 
     @property
     def tenant(self):
         return Tenant.query.filter_by(room_id=self.id, active=True).first()
+
+    @property
+    def custom_code(self):
+        return bool(self.code_hash)
+
+    def matches(self, code):
+        if self.code_hash:
+            return check_password_hash(self.code_hash, code)
+        return bool(self.code) and hmac.compare_digest(self.code, code)
+
+    def set_owner_code(self, code):
+        self.code, self.code_hash = code, None
 
     @property
     def deposit(self):
@@ -146,21 +162,32 @@ def set_setting(key, value):
     db.session.add(s)
 
 
+def find_room(code, exclude_room_id=None):
+    """用密碼找房間；密碼在全部房間中是唯一的。"""
+    if not (code.isdigit() and len(code) == 4):
+        return None
+    for r in Room.query.order_by(Room.sort).all():
+        if r.id != exclude_room_id and r.matches(code):
+            return r
+    return None
+
+
 def new_code(exclude_room_id=None):
     """產生不重複、不好猜的四位數密碼。"""
-    used = {r.code for r in Room.query.all() if r.id != exclude_room_id}
     while True:
         code = f"{secrets.randbelow(10000):04d}"
-        if code not in used and code not in WEAK_CODES:
+        if code not in WEAK_CODES and not find_room(code, exclude_room_id):
             return code
 
 
 def migrate():
     """舊資料庫補上新欄位。"""
     cols = {c["name"] for c in inspect(db.engine).get_columns("room")}
-    if "code" not in cols:
-        with db.engine.begin() as conn:
+    with db.engine.begin() as conn:
+        if "code" not in cols:
             conn.execute(text("ALTER TABLE room ADD COLUMN code VARCHAR(8)"))
+        if "code_hash" not in cols:
+            conn.execute(text("ALTER TABLE room ADD COLUMN code_hash VARCHAR(255)"))
 
 
 def init_db():
@@ -176,8 +203,8 @@ def init_db():
             db.session.rollback()
     changed = False
     for r in Room.query.order_by(Room.sort).all():
-        if not r.code:
-            r.code = new_code(r.id)
+        if not r.code and not r.code_hash:
+            r.set_owner_code(new_code(r.id))
             db.session.flush()
             changed = True
     if changed:
@@ -297,7 +324,8 @@ def login_blocked():
 def record_fail():
     db.session.add(LoginFail(ip=client_ip()))
     reset_at = get_setting("fails_reset_at")
-    q = LoginFail.query
+    q = LoginFail.query.filter(LoginFail.ip.notlike("owner:%"),
+                               LoginFail.ip.notlike("change:%"))
     if reset_at:
         q = q.filter(LoginFail.at >= datetime.fromisoformat(reset_at))
     if q.count() + 1 >= GLOBAL_MAX_FAILS:
@@ -328,7 +356,7 @@ def tenant_login():
         error = login_blocked()
         code = request.form.get("code", "").strip()
         if not error:
-            room = Room.query.filter_by(code=code).first() if len(code) == 4 else None
+            room = find_room(code)
             if not room:
                 left = record_fail()
                 error = (f"密碼不對，還可以再試 {left} 次。" if left
@@ -347,7 +375,7 @@ def tenant_bind():
     info = session.get("bind")
     room = db.session.get(Room, info["room_id"]) if info else None
     fresh = info and datetime.now() - datetime.fromisoformat(info["at"]) < timedelta(minutes=BIND_MINUTES)
-    if not room or not fresh or room.code != info["code"]:
+    if not room or not fresh or not room.matches(info["code"]):
         session.pop("bind", None)
         flash("請重新輸入房東提供的密碼。", "warn")
         return redirect(url_for("tenant_login"))
@@ -401,6 +429,41 @@ def tenant_profile():
     tenant.phone = request.form.get("phone", "").strip()
     db.session.commit()
     flash("個人資料已儲存。", "ok")
+    return redirect(url_for("tenant_home"))
+
+
+@app.route("/tenant/code", methods=["POST"])
+def tenant_code():
+    room, tenant = tenant_required()
+    if not room:
+        return redirect(url_for("tenant_login"))
+    f = request.form
+    new, new2 = f.get("code", "").strip(), f.get("code2", "").strip()
+    key = f"change:{tenant.id}"
+    since = datetime.now() - timedelta(days=1)
+    rejects = LoginFail.query.filter(LoginFail.ip == key, LoginFail.at >= since).count()
+    if rejects >= CHANGE_MAX_REJECTS:
+        flash("今天修改密碼的次數太多，請明天再試，或請房東重設。", "warn")
+    elif not room.matches(f.get("old_code", "").strip()):
+        db.session.add(LoginFail(ip=key))
+        db.session.commit()
+        flash("目前的密碼不對，密碼沒有變更。", "warn")
+    elif not (new.isdigit() and len(new) == 4):
+        flash("新密碼要是四位數字。", "warn")
+    elif new != new2:
+        flash("兩次輸入的新密碼不一樣。", "warn")
+    elif new in WEAK_CODES:
+        flash("這組密碼太容易被猜到，請換一組。", "warn")
+    elif find_room(new, exclude_room_id=room.id):
+        db.session.add(LoginFail(ip=key))
+        db.session.commit()
+        flash("這組密碼無法使用，請換一組。", "warn")
+    else:
+        room.code, room.code_hash = None, generate_password_hash(new)
+        tenant.pin_ver = (tenant.pin_ver or 0) + 1
+        db.session.commit()
+        session["pin_ver"] = tenant.pin_ver
+        flash("密碼已變更，其他手機需要用新密碼重新登入。", "ok")
     return redirect(url_for("tenant_home"))
 
 
@@ -477,20 +540,64 @@ def tenant_pay():
 
 # ---------------------------------------------------------------- 屋主端
 def owner_required():
-    return session.get("owner") is True
+    return (session.get("owner") is True
+            and session.get("owner_ver") == get_setting("owner_ver", "0"))
+
+
+def owner_password_ok(pw):
+    """網頁上改過的密碼優先；沒改過才用 WSGI 檔裡的 OWNER_PASSWORD。"""
+    saved = get_setting("owner_pw_hash")
+    if saved:
+        return check_password_hash(saved, pw)
+    return hmac.compare_digest(pw, OWNER_PASSWORD)
 
 
 @app.route("/owner/login", methods=["GET", "POST"])
 def owner_login():
     error = None
     if request.method == "POST":
-        if hmac.compare_digest(request.form.get("password", ""), OWNER_PASSWORD):
+        key = f"owner:{client_ip()}"
+        since = datetime.now() - timedelta(hours=1)
+        fails = LoginFail.query.filter(LoginFail.ip == key, LoginFail.at >= since).count()
+        if fails >= OWNER_MAX_FAILS:
+            error = "錯誤太多次，請一小時後再試。"
+        elif owner_password_ok(request.form.get("password", "")):
             session.permanent = True
             session["owner"] = True
+            session["owner_ver"] = get_setting("owner_ver", "0")
             return redirect(url_for("owner_home"))
-        error = "密碼不對。"
+        else:
+            db.session.add(LoginFail(ip=key))
+            db.session.commit()
+            left = OWNER_MAX_FAILS - fails - 1
+            error = f"密碼不對，還可以再試 {left} 次。" if left else "錯誤太多次，請一小時後再試。"
     return render_template("owner_login.html", error=error,
-                           default_pw=(OWNER_PASSWORD == "admin"))
+                           default_pw=(OWNER_PASSWORD == "admin" and not get_setting("owner_pw_hash")))
+
+
+@app.route("/owner/password", methods=["GET", "POST"])
+def owner_password():
+    if not owner_required():
+        return redirect(url_for("owner_login"))
+    error = None
+    if request.method == "POST":
+        f = request.form
+        new, new2 = f.get("new", ""), f.get("new2", "")
+        if not owner_password_ok(f.get("old", "")):
+            error = "目前的密碼不對。"
+        elif len(new) < 10 or new.isdigit() or new.isalpha():
+            error = "新密碼至少 10 個字元，而且要同時有英文和數字。"
+        elif new != new2:
+            error = "兩次輸入的新密碼不一樣。"
+        else:
+            ver = str(int(get_setting("owner_ver", "0")) + 1)
+            set_setting("owner_pw_hash", generate_password_hash(new))
+            set_setting("owner_ver", ver)
+            db.session.commit()
+            session["owner_ver"] = ver
+            flash("屋主密碼已變更，其他裝置需要用新密碼重新登入。", "ok")
+            return redirect(url_for("owner_home"))
+    return render_template("owner_password.html", error=error)
 
 
 @app.route("/owner/logout", methods=["POST"])
@@ -565,7 +672,7 @@ def owner_room(rid):
             tenant.verified = True
             flash(f"已確認 {tenant.name} 是這間房的房客。", "ok")
         elif action == "new_code":
-            room.code = new_code(room.id)
+            room.set_owner_code(new_code(room.id))
             if tenant:
                 tenant.pin_ver = (tenant.pin_ver or 0) + 1
             flash(f"{room.name} 的新密碼是 {room.code}，舊密碼已失效，房客要用新密碼重新登入。", "ok")
@@ -573,7 +680,7 @@ def owner_room(rid):
             tenant.active = False
             tenant.moved_out_at = datetime.now()
             tenant.pin_ver = (tenant.pin_ver or 0) + 1
-            room.code = new_code(room.id)
+            room.set_owner_code(new_code(room.id))
             flash(f"已解除 {tenant.name} 的綁定，房間變回空房，繳費紀錄已保留。新房客請用密碼 {room.code}。", "ok")
         db.session.commit()
         return redirect(url_for("owner_room", rid=room.id))
