@@ -766,9 +766,7 @@ def tenant_home():
         payable = []
     history = (Payment.query.filter_by(tenant_id=tenant.id)
                .order_by(Payment.created_at.desc()).limit(36).all())
-    line_bound = LineUser.query.filter_by(role="tenant", tenant_id=tenant.id).first() is not None
     return render_template("tenant_home.html", room=room, tenant=tenant, period=period,
-                           line_bound=line_bound, line_on=line_api.enabled(),
                            bill=bill, this_items=this_items, older=older,
                            payable_total=sum(i.amount for i in payable),
                            due=tenant.due_date(period), history=history)
@@ -1120,8 +1118,8 @@ def owner_bills():
         if sent:
             flash(f"已發送繳費單給 {len(sent)} 間：{'、'.join(sent)}。", "ok")
             if request.form.get("announce", "1") == "1":
-                if notify_group(f"【租屋小幫手】{month_label(period)}繳費單已發出，"
-                                f"請打開連結查看並繳費：\n{site_url('tenant_login')}", "bill_group"):
+                if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
+                                f"{site_url('tenant_login')}", "bill_group"):
                     flash("已在公告群組發出通知。", "ok")
                 elif line_api.enabled() and not get_setting("line_group_id"):
                     flash("尚未設定公告群組，這次沒有發出群組通知。", "warn")
@@ -1403,11 +1401,8 @@ def owner_pay(pid):
                 p.confirm_note = (p.confirm_note + f"｜多收 {diff:,} 不處理").strip("｜")
             db.session.commit()
             flash(msg, "ok")
-            labels = "、".join(i.label for i in p.items if i.kind != "diff") or p.kind_label
-            text = f"【租屋小幫手】{p.room.name} 的 {labels} 房東已確認收款，謝謝！"
             if diff < 0 and choice == "carry":
-                text += "\n本次尚有差額，已列入繳費單，請打開連結查看。"
-            notify_tenant(p.tenant, text + f"\n{site_url('tenant_login')}", "confirm_tenant")
+                flash("請提醒房客到繳費單查看差額。", "warn")
     elif action == "delete":
         if p.confirmed:
             flash("已確認的款項不能刪除，請先取消確認。", "warn")
@@ -1479,8 +1474,7 @@ def help_text():
     contact = get_setting("landlord_contact", "").strip()
     return ("這是租屋小幫手的自動通知帳號，無法回覆訊息。\n\n"
             f"查看繳費單、繳費：{site_url('tenant_login')}\n"
-            "房客要收到個人通知，請傳：綁定 你的四位數密碼\n"
-            "取消通知請傳：解除綁定\n\n"
+            "繳費通知都會發在住戶群組，不需要另外綁定。\n\n"
             + (f"其他問題請聯絡房東：{contact}" if contact else "其他問題請直接聯絡房東。"))
 
 
@@ -1526,31 +1520,19 @@ def handle_line_event(ev):
                 reply("已設定為公告群組，之後繳費單發出時會在這裡通知大家。")
             else:
                 reply("設定碼不正確或已過期，請管理者重新產生。")
-        elif cmd in ("綁定", "房東", "管理者"):
-            reply("請不要在群組傳密碼！請私訊租屋小幫手。\n這組密碼已經被群組成員看到，請聯絡房東更換。")
+        elif cmd == "綁定":
+            reply("房客不需要綁定，通知都會發在這個群組。\n"
+                  "提醒：房間密碼請勿傳到群組，若已傳出請聯絡房東更換。")
+        elif cmd in ("房東", "管理者"):
+            reply("請私訊租屋小幫手完成綁定，不要在群組傳綁定碼。")
         return
 
     if stype != "user" or not uid:
         return
     if cmd == "綁定":
-        key = f"line:{uid}"
-        if get_setting("tenant_login_locked") == "1" or recent_fails(key, hours=1) >= IP_MAX_FAILS:
-            reply("錯誤太多次，請一小時後再試，或聯絡房東。")
-            return
-        room = find_room(arg)
-        if not room:
-            db.session.add(LoginFail(ip=key))
-            db.session.commit()
-            reply("密碼不對。請傳：綁定 四位數密碼（和網頁登入的密碼相同）")
-            return
-        if not room.tenant:
-            reply(f"這間房還沒有房客資料，請先到網頁登入完成綁定：\n{site_url('tenant_login')}")
-            return
-        LineUser.query.filter_by(user_id=uid).delete()
-        db.session.add(LineUser(user_id=uid, role="tenant", tenant_id=room.tenant.id))
-        db.session.commit()
-        reply(f"已綁定 {room.name}（{room.tenant.name}）。\n房東確認收款、繳費期限前都會通知你。\n\n"
-              "為了安全，建議刪除剛才傳的密碼訊息。")
+        reply("房客不需要綁定，繳費通知都會發在住戶群組。\n\n"
+              f"查看繳費單、繳費：{site_url('tenant_login')}\n\n"
+              "提醒：請不要把房間密碼傳給任何人。")
         return
     if cmd in ("房東", "管理者"):
         kind = "landlord" if cmd == "房東" else "admin"
@@ -1599,34 +1581,24 @@ def line_callback():
 
 # ---------------------------------------------------------------- 每日排程
 def daily_job(today):
+    """每天檢查：群組提醒房客、私訊摘要給房東。"""
     period = today.strftime("%Y-%m")
-    reminders, late_rooms, unbilled_soon = 0, [], []
+    soon, late_rooms, unbilled_soon = [], [], []
     for room in Room.query.filter_by(active=True).order_by(Room.sort).all():
         t = room.tenant
         if not t:
             continue
         due = t.due_date(period)
         days = (due - today).days
-        bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
-        if not bill and 0 <= days <= 3:
+        if not Bill.query.filter_by(tenant_id=t.id, period=period).first() and 0 <= days <= 3:
             unbilled_soon.append(f"{room.name}（{due.month}/{due.day}）")
         unpaid = [i for i in unpaid_items(t) if i.state == "unpaid"]
-        owed = sum(i.amount for i in unpaid)
-        if owed <= 0:
+        if sum(i.amount for i in unpaid) <= 0:
             continue
-        overdue_old = any(i.month < period and i.amount > 0 for i in unpaid)
-        if days < 0 or overdue_old:
+        if days < 0 or any(i.month < period and i.amount > 0 for i in unpaid):
             late_rooms.append(room.name)
-        msg = None
-        if days == 3:
-            msg = f"【繳費提醒】{room.name} 的繳費期限是 {due.month}/{due.day}（還有 3 天）。"
-        elif days == 0:
-            msg = f"【繳費提醒】今天（{due.month}/{due.day}）是 {room.name} 的繳費期限。"
-        elif days == -1:
-            msg = f"【繳費提醒】{room.name} 的繳費期限 {due.month}/{due.day} 已過，請盡快繳費並通知房東。"
-        if msg:
-            notify_tenant(t, msg + f"\n{site_url('tenant_login')}", "reminder")
-            reminders += 1
+        elif 0 <= days <= 3:
+            soon.append(room.name)
 
     pending = Payment.query.filter_by(status="待確認").count()
     lines = []
@@ -1634,12 +1606,15 @@ def daily_job(today):
         lines.append(f"・待確認收款 {pending} 筆")
     if late_rooms:
         lines.append(f"・逾期未繳：{'、'.join(late_rooms)}")
+    if soon:
+        lines.append(f"・3 天內到期：{'、'.join(soon)}")
     if unbilled_soon:
         lines.append(f"・快到繳費日但還沒發繳費單：{'、'.join(unbilled_soon)}")
     if lines:
         notify_landlords(f"【租屋小幫手・每日摘要 {today.month}/{today.day}】\n" + "\n".join(lines)
                          + f"\n\n{site_url('owner_home')}", "daily_summary")
-    return {"reminders": reminders, "late": late_rooms, "pending": pending, "unbilled_soon": unbilled_soon}
+    return {"soon": soon, "late": late_rooms, "pending": pending,
+            "unbilled_soon": unbilled_soon}
 
 
 @app.route("/cron/daily")

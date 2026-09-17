@@ -46,20 +46,6 @@
   {% endif %}
 </div>
 
-{% if line_on %}
-<div class="panel line-card">
-  {% if line_bound %}
-  <p style="margin:0"><strong>LINE 通知：已開啟</strong></p>
-  <p class="muted small" style="margin:4px 0 0">房東確認收款、繳費期限前，租屋小幫手會傳 LINE 通知你。不想收到可以對官方帳號傳「解除綁定」。</p>
-  {% else %}
-  <p style="margin:0"><strong>開啟 LINE 通知</strong></p>
-  <p class="small" style="margin:4px 0 0">1. 加入官方帳號好友：<a href="https://line.me/R/ti/p/{{ LINE_BASIC_ID }}" target="_blank" rel="noopener">{{ LINE_BASIC_ID }}</a><br>
-  2. 在和官方帳號的一對一聊天室傳：<strong>綁定 你的四位數密碼</strong></p>
-  <p class="muted small" style="margin:4px 0 0">請勿在群組裡傳密碼。</p>
-  {% endif %}
-</div>
-{% endif %}
-
 <h2>基本資料</h2>
 <div class="panel">
   <dl class="facts">

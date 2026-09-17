@@ -19,7 +19,7 @@
 
 <h2>綁定 LINE</h2>
 <div class="panel">
-  <p class="muted small" style="margin-top:0">按下按鈕產生六位數綁定碼，{{ minutes }} 分鐘內有效、只能用一次。請對方加入 {{ LINE_BASIC_ID }} 好友後，在一對一聊天室傳送指令。</p>
+  <p class="muted small" style="margin-top:0">按下按鈕產生六位數綁定碼，{{ minutes }} 分鐘內有效、只能用一次。房東與管理者請先加入 {{ LINE_BASIC_ID }} 好友，再於一對一聊天室傳送指令；公告群組則由你在群組裡傳。<br><strong>房客不需要綁定</strong>，繳費通知一律發在公告群組。</p>
   {% for kind, label, cmd in [('landlord','房東','房東'),('admin','管理者（你自己）','管理者'),('group','公告群組','設定公告群組')] %}
   <div class="list-item list-head">
     <span><strong>{{ label }}</strong>
@@ -72,10 +72,10 @@
   </form>
 </div>
 
-<h2>每日提醒排程</h2>
+<h2>每日檢查排程</h2>
 <div class="panel">
   {% if cron_url %}
-  <p class="small" style="margin-top:0">在 cron-job.org 建立排程，每天早上 9:00（Asia/Taipei）呼叫這個網址：</p>
+  <p class="small" style="margin-top:0">房東每天早上會收到待辦摘要（待確認收款、逾期、還沒發繳費單）。群組不會收到催繳訊息。<br>在 cron-job.org 建立排程，每天早上 9:00（Asia/Taipei）呼叫這個網址：</p>
   <div class="readonly" style="word-break:break-all"><code>{{ cron_url }}</code></div>
   <p class="muted small">這個網址含有密鑰，請勿分享。</p>
   {% else %}
