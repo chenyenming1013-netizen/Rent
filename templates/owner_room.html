@@ -71,6 +71,16 @@
   <div class="list-item">
     <div class="list-head"><strong>{{ p.period }}</strong>
       <span class="pill {{ 'ok' if p.status == '已確認' else 'wait' }}">{{ p.status }}</span></div>
+    {% if p.status != '已確認' %}
+    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="confirm">
+      <label class="small" for="rcv{{ p.id }}">實收</label>
+      <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
+      <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
+      <button class="btn small primary">確認收款</button>
+    </form>
+    {% endif %}
     <div class="muted small">回報 {{ p.total|money }}{% if p.received is not none %}，實收 {{ p.received|money }}{% endif %}，電表 {{ p.meter_last }} → {{ p.meter_now }}{% if p.confirm_note %}，{{ p.confirm_note }}{% endif %}</div>
   </div>
   {% else %}<p class="muted">還沒有紀錄。</p>{% endfor %}

@@ -284,7 +284,10 @@ def check_csrf():
 # ---------------------------------------------------------------- 入口
 @app.route("/")
 def index():
-    return render_template("index.html", mine=tenant_required()[0])
+    # 已登入的房客不顯示首頁，直接回自己的房間（屋主除外）
+    if tenant_required()[0] and not owner_required():
+        return redirect(url_for("tenant_home"))
+    return render_template("index.html")
 
 
 @app.route("/ping")
@@ -402,7 +405,7 @@ def tenant_bind():
 def tenant_logout():
     for k in ("room_id", "tenant_id", "pin_ver", "bind"):
         session.pop(k, None)
-    return redirect(url_for("index"))
+    return redirect(url_for("tenant_login"))
 
 
 @app.route("/tenant/home")
@@ -432,39 +435,44 @@ def tenant_profile():
     return redirect(url_for("tenant_home"))
 
 
-@app.route("/tenant/code", methods=["POST"])
-def tenant_code():
+@app.route("/tenant/password", methods=["GET", "POST"])
+def tenant_password():
     room, tenant = tenant_required()
     if not room:
         return redirect(url_for("tenant_login"))
-    f = request.form
-    new, new2 = f.get("code", "").strip(), f.get("code2", "").strip()
-    key = f"change:{tenant.id}"
-    since = datetime.now() - timedelta(days=1)
-    rejects = LoginFail.query.filter(LoginFail.ip == key, LoginFail.at >= since).count()
-    if rejects >= CHANGE_MAX_REJECTS:
-        flash("今天修改密碼的次數太多，請明天再試，或請房東重設。", "warn")
-    elif not room.matches(f.get("old_code", "").strip()):
-        db.session.add(LoginFail(ip=key))
-        db.session.commit()
-        flash("目前的密碼不對，密碼沒有變更。", "warn")
-    elif not (new.isdigit() and len(new) == 4):
-        flash("新密碼要是四位數字。", "warn")
-    elif new != new2:
-        flash("兩次輸入的新密碼不一樣。", "warn")
-    elif new in WEAK_CODES:
-        flash("這組密碼太容易被猜到，請換一組。", "warn")
-    elif find_room(new, exclude_room_id=room.id):
-        db.session.add(LoginFail(ip=key))
-        db.session.commit()
-        flash("這組密碼無法使用，請換一組。", "warn")
-    else:
-        room.code, room.code_hash = None, generate_password_hash(new)
-        tenant.pin_ver = (tenant.pin_ver or 0) + 1
-        db.session.commit()
-        session["pin_ver"] = tenant.pin_ver
-        flash("密碼已變更，其他手機需要用新密碼重新登入。", "ok")
-    return redirect(url_for("tenant_home"))
+    error = None
+    if request.method == "POST":
+        f = request.form
+        new, new2 = f.get("code", "").strip(), f.get("code2", "").strip()
+        key = f"change:{tenant.id}"
+        since = datetime.now() - timedelta(days=1)
+        rejects = LoginFail.query.filter(LoginFail.ip == key, LoginFail.at >= since).count()
+        if rejects >= CHANGE_MAX_REJECTS:
+            error = "今天修改密碼的次數太多，請明天再試，或請房東重設。"
+        elif not room.matches(f.get("old_code", "").strip()):
+            db.session.add(LoginFail(ip=key))
+            db.session.commit()
+            error = "目前的密碼不對。"
+        elif not (new.isdigit() and len(new) == 4):
+            error = "新密碼要是四位數字。"
+        elif new != new2:
+            error = "兩次輸入的新密碼不一樣。"
+        elif new in WEAK_CODES:
+            error = "這組密碼太容易被猜到，請換一組。"
+        elif room.matches(new):
+            error = "新密碼和目前的密碼一樣。"
+        elif find_room(new, exclude_room_id=room.id):
+            db.session.add(LoginFail(ip=key))
+            db.session.commit()
+            error = "這組密碼無法使用，請換一組。"
+        else:
+            room.code, room.code_hash = None, generate_password_hash(new)
+            tenant.pin_ver = (tenant.pin_ver or 0) + 1
+            db.session.commit()
+            session["pin_ver"] = tenant.pin_ver
+            flash("密碼已變更，下次請用新密碼登入。", "ok")
+            return redirect(url_for("tenant_home"))
+    return render_template("tenant_password.html", room=room, error=error)
 
 
 @app.route("/tenant/pay", methods=["GET", "POST"])
@@ -613,6 +621,7 @@ def owner_home():
     rooms = Room.query.order_by(Room.sort).all()
     period = this_period()
     status = {}
+    pending_by_room = {}
     for r in rooms:
         t = r.tenant
         if not t:
@@ -623,6 +632,7 @@ def owner_home():
             status[r.id] = ("已確認", "ok")
         elif p:
             status[r.id] = ("待確認", "wait")
+            pending_by_room[r.id] = p.id
         elif date.today().day > t.due_day:
             status[r.id] = ("逾期", "late")
         else:
@@ -633,6 +643,7 @@ def owner_home():
               .order_by(Payment.confirmed_at.desc()).limit(20).all())
     entry = public_url(url_for("tenant_login"))
     return render_template("owner_home.html", rooms=rooms, status=status,
+                           pending_by_room=pending_by_room,
                            pending=pending, recent=recent, period=period,
                            rate=get_setting("elec_rate", "0"),
                            login_locked=get_setting("tenant_login_locked") == "1",

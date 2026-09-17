@@ -7,7 +7,7 @@
 <nav class="doors">
   <a class="door" href="{{ url_for('tenant_login') }}">
     <span class="door-title">我是房客</span>
-    <span class="door-sub">{% if mine %}進入 {{ mine.name }}{% else %}輸入房東提供的密碼{% endif %}</span>
+    <span class="door-sub">輸入房東提供的密碼</span>
   </a>
   <a class="door owner" href="{{ url_for('owner_home') }}">
     <span class="door-title">我是屋主</span>

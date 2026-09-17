@@ -3,7 +3,7 @@
 {% macro val(name, default='') %}{{ form.get(name, default) if form else default }}{% endmacro %}
 {% macro err(name) %}{% if errors.get(name) %}<p class="error">{{ errors[name] }}</p>{% endif %}{% endmacro %}
 {% block content %}
-<a class="back" href="{{ url_for('tenant_home') }}">← 回主頁</a>
+<a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
 <h1>回報繳費</h1>
 <p class="muted">{{ room.name }}，{{ period }} 這期</p>
 
