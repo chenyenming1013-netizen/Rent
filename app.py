@@ -227,6 +227,8 @@ class BillItem(db.Model):
     month = db.Column(db.String(7), nullable=False)      # 這筆費用屬於哪個月份
     amount = db.Column(db.Integer, nullable=False, default=0)
     note = db.Column(db.String(60), default="")
+    kwh = db.Column(db.Integer)                          # 用電度數（電費用）
+    rate = db.Column(db.Float)                           # 當時的台電公告電價（每度）
     payment_id = db.Column(db.Integer, db.ForeignKey("payment.id"))
     paid = db.Column(db.Boolean, default=False)
     paid_at = db.Column(db.DateTime)
@@ -328,6 +330,13 @@ def migrate():
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE tenant ADD COLUMN pay_day INTEGER"))
 
+    item_cols = {c["name"] for c in inspect(db.engine).get_columns("bill_item")}
+    with db.engine.begin() as conn:
+        if "kwh" not in item_cols:
+            conn.execute(text("ALTER TABLE bill_item ADD COLUMN kwh INTEGER"))
+        if "rate" not in item_cols:
+            conn.execute(text("ALTER TABLE bill_item ADD COLUMN rate FLOAT"))
+
     pay_cols = {c["name"] for c in inspect(db.engine).get_columns("payment")}
     if "kind" not in pay_cols:
         # 舊版每期只有一筆（月租＋電費）；重建資料表以改用新的唯一條件
@@ -417,6 +426,14 @@ def rent_record(pays):
 
 def elec_record(pays):
     return pays.get("both") or pays.get("elec")
+
+
+def group_by_building(rooms):
+    groups = {}
+    for r in rooms:
+        groups.setdefault(r.building, []).append(r)
+    order = buildings()
+    return sorted(groups.items(), key=lambda kv: order.index(kv[0]) if kv[0] in order else 99)
 
 
 def unpaid_items(tenant):
@@ -840,22 +857,23 @@ def owner_logout():
 
 
 def room_status(room, period):
-    """回傳 (文字, 樣式, 待確認的繳費 id)。"""
+    """回傳 (文字, 樣式, 待確認的繳費 id)。樣式：empty none due late wait ok"""
     t = room.tenant
     if not t:
         return ("空房", "empty", None)
     pending = (Payment.query.filter_by(tenant_id=t.id, status="待確認")
                .order_by(Payment.id).first())
     if pending:
-        return ("待確認", "wait", pending.id)
+        return ("繳費待確認", "wait", pending.id)
     unpaid = [i for i in unpaid_items(t) if i.state == "unpaid"]
     if unpaid:
         total = sum(i.amount for i in unpaid)
         late = any(i.month < period for i in unpaid) or date.today() > t.due_date(period)
-        return (f"{'逾期' if late else '待繳'} {total:,}", "late" if late else "todo", None)
+        return ((f"逾期未繳 {total:,} 元" if late else f"費用待繳 {total:,} 元"),
+                "late" if late else "due", None)
     if not Bill.query.filter_by(tenant_id=t.id, period=period).first():
-        return ("未發帳單", "empty", None)
-    return ("已繳清", "ok", None)
+        return ("尚未發繳費單", "none", None)
+    return ("本月已繳清", "ok", None)
 
 
 @app.route("/owner")
@@ -881,7 +899,8 @@ def owner_home():
     unbilled = sum(1 for r in rooms if r.tenant and not
                    Bill.query.filter_by(tenant_id=r.tenant.id, period=period).first())
     entry = public_url(url_for("tenant_login"))
-    return render_template("owner_home.html", unbilled=unbilled, rooms=rooms, status=status, period=period,
+    return render_template("owner_home.html", unbilled=unbilled,
+                           groups=group_by_building(rooms), rooms=rooms, status=status, period=period,
                            pending=pending, recent=recent, inactive=inactive, income=income,
                            rate=get_setting("elec_rate", "0"),
                            login_locked=get_setting("tenant_login_locked") == "1",
@@ -902,11 +921,22 @@ def owner_bills():
         elec_month = period
 
     if request.method == "POST":
+        try:
+            rate = float(f.get("elec_rate", ""))
+            if rate < 0:
+                raise ValueError
+        except ValueError:
+            flash("台電公告電價要填數字。", "warn")
+            return redirect(url_for("owner_bills", elec_month=elec_month))
+        set_setting("elec_rate", f"{rate:g}")
         sent, skipped = [], []
         for r in rooms:
             t = r.tenant
             rent = max(to_int(f.get(f"rent_{r.id}"), 0), 0)
+            kwh = max(to_int(f.get(f"kwh_{r.id}"), 0), 0)
             elec = max(to_int(f.get(f"elec_{r.id}"), 0), 0)
+            if not elec and kwh:
+                elec = round(kwh * rate)
             if not rent and not elec:
                 continue
             bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
@@ -917,6 +947,7 @@ def owner_bills():
             for kind, month, amount, note in [
                     ("rent", period, rent, ""),
                     ("elec", elec_month, elec, f.get(f"note_{r.id}", "").strip()[:60])]:
+                extra = {"kwh": kwh or None, "rate": rate} if kind == "elec" else {}
                 item = BillItem.query.filter_by(tenant_id=t.id, kind=kind, month=month).first()
                 if item and item.state != "unpaid":
                     if amount:
@@ -926,9 +957,11 @@ def owner_bills():
                     continue
                 if item:
                     item.amount, item.note = amount, note or item.note
+                    for k, v in extra.items():
+                        setattr(item, k, v)
                 else:
                     db.session.add(BillItem(bill_id=bill.id, tenant_id=t.id, kind=kind,
-                                            month=month, amount=amount, note=note))
+                                            month=month, amount=amount, note=note, **extra))
             sent.append(r.name)
         db.session.commit()
         if sent:
@@ -949,7 +982,12 @@ def owner_bills():
                      "rent_item": rent_item, "elec_item": elec_item,
                      "carry": [i for i in unpaid_items(t)
                                if i.month < period and not (i.kind == "elec" and i.month == elec_month)]})
-    return render_template("owner_bills.html", rows=rows, period=period,
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["room"].building, []).append(row)
+    order = buildings()
+    grouped = sorted(grouped.items(), key=lambda kv: order.index(kv[0]) if kv[0] in order else 99)
+    return render_template("owner_bills.html", rows=rows, grouped=grouped, period=period,
                            elec_month=elec_month, months=months,
                            rate=get_setting("elec_rate", "0"))
 

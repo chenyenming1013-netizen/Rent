@@ -19,6 +19,8 @@
 <div class="bill-row">
   <span class="bill-ic {{ i.kind }}">{{ icon('cash' if i.kind == 'rent' else 'bolt', 20) }}</span>
   <span class="bill-name">{% if carry %}{{ i.label }}{% else %}本月{{ '月租' if i.kind == 'rent' else '電費' }}{% if i.kind == 'elec' and i.month != period %}<span class="muted small">（{{ i.label }}）</span>{% endif %}{% endif %}
+    {% if i.kind == 'elec' and i.kwh %}<span class="small" style="display:block">用電 {{ i.kwh }} 度 × 每度 {{ '%g'|format(i.rate or 0) }} 元</span>{% endif %}
+    {% if i.kind == 'elec' and i.rate is not none %}<span class="muted small" style="display:block">台電公告電價：每度 {{ '%g'|format(i.rate) }} 元</span>{% endif %}
     {% if i.note %}<span class="muted small" style="display:block">{{ i.note }}</span>{% endif %}
     {% if i.kind == 'elec' or carry %}<span class="small {{ 'ok-text' if i.state == 'paid' else 'warn-text' }}" style="display:block">{{ month_label(i.month) }}份{{ '已繳清' if i.state == 'paid' else '尚未繳清' }}</span>{% endif %}</span>
   <span class="bill-amt">{{ i.amount|money }} 元</span>

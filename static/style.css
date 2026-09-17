@@ -223,3 +223,24 @@ details.plain summary{cursor:pointer;color:var(--indigo)}
 .item-chk .item-name{flex:1} .item-chk .item-amt{font-weight:700}
 .bill-card{margin-bottom:10px}
 @media (max-width:420px){.bill .bill-row{flex-wrap:wrap}.bill-st{margin-left:46px}}
+/* 物件分組與狀態標示 */
+.bgroup-head{display:flex;align-items:center;gap:4px;margin:22px 0 10px;padding:6px 12px;font-size:18px;font-weight:700;
+  border-left:6px solid var(--c);background:#fff;border-radius:8px}
+.room-card{border-width:1.5px}
+.st{display:inline-flex;align-items:center;gap:4px;font-size:14px;font-weight:700;padding:4px 10px;border-radius:8px;border:1.5px solid}
+.st-block{display:flex;width:100%;margin:8px 0 2px;font-size:16px;padding:8px 12px;box-sizing:border-box}
+.st-due{background:#FFE9E6;color:#A12318;border-color:#F3A89E}
+.st-late{background:#A12318;color:#fff;border-color:#A12318}
+.st-wait{background:#FFF1CC;color:#7A4A00;border-color:#EFC56B}
+.st-ok{background:#DDF3EA;color:#0B5A40;border-color:#8FD1B5}
+.st-none{background:#F1F3F5;color:#5B6876;border-color:#CFD6DD}
+.st-empty{background:#fff;color:#8A96A3;border-color:#DDE2E7;border-style:dashed}
+.legend-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 4px}
+.legend-row .st{font-size:12px;padding:2px 8px}
+.pill.due{background:#FFE9E6;color:#A12318}
+.pill.none{background:#F1F3F5;color:#5B6876}
+.room-card.warn,.room-card.late{border-left-width:1.5px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px}
+.grid3 input{padding:0 8px}
+.rate-row{display:flex;align-items:center;gap:10px}
+.rate-row input{width:120px;font-size:20px;font-weight:700}

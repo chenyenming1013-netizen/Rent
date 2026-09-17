@@ -5,54 +5,87 @@
 <a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
 {{ banner('發送' ~ month_label(period) ~ '繳費單', '填好金額後一鍵發送', meter_art(), 'sky') }}
 
-<form method="post" class="stack" style="margin:0">
+<form method="post" class="stack" style="margin:0" id="bill-form">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="panel" style="margin-top:0">
+  <div class="panel rate-panel" style="margin-top:0">
+    <label for="elec_rate">台電公告電價（每度）</label>
+    <div class="rate-row">
+      <input id="elec_rate" name="elec_rate" type="number" step="0.01" min="0" value="{{ rate }}" required>
+      <span>元／度</span>
+      <a href="https://www.taipower.com.tw/" target="_blank" rel="noopener" class="small">查台電電價</a>
+    </div>
+    <p class="muted small" style="margin:6px 0 0">這個電價會和電費一起顯示在房客的繳費單上。依規定，向房客收取的電費每度不得超過台電當期夏月最高級距電價。</p>
+
     <label for="elec_month">這次的電費屬於哪個月份</label>
     <select id="elec_month" name="elec_month" onchange="location.href='?elec_month='+this.value">
       {% for m in months %}<option value="{{ m }}" {% if m == elec_month %}selected{% endif %}>{{ month_label(m) }}電費（{{ m }}）</option>{% endfor %}
     </select>
-    <p class="muted small" style="margin:6px 0 0">電費帳單晚到時，選上個月，就會以「{{ month_label(months[1]) }}電費」加進這期繳費單。電費單價參考：每度 {{ rate }} 元。</p>
+    <p class="muted small" style="margin:6px 0 0">電費帳單晚到時選上個月，就會以「{{ month_label(months[1]) }}電費」加進這期繳費單。</p>
   </div>
 
-  <p class="muted small">月租已自動帶入。<strong>月租和電費都清空的房間不會收到通知</strong>；電費沒填的房間，繳費單上就不會有電費。</p>
+  <p class="muted small">月租已自動帶入。填「用電度數」會自動算出電費，也可以直接改電費金額。<strong>月租和電費都空白的房間不會收到通知</strong>。</p>
 
-  {% for row in rows %}
+  {% for building, rows_ in grouped %}
+  {% set c = rows_[0].room.color %}
+  <div class="bgroup-head" style="--c:{{ c[1] }}"><span class="bdot" style="background:{{ c[1] }}"></span>{{ building }}<span class="muted small">（{{ rows_|length }} 間）</span></div>
+  {% for row in rows_ %}
   {% set r = row.room %}{% set ri = row.rent_item %}{% set ei = row.elec_item %}
-  <div class="room-card bill-card">
+  <div class="room-card bill-card" style="background:{{ c[0] }}2E;border-color:{{ c[0] }}">
     <div class="rc-top">
-      <span class="rc-name"><span class="bdot" style="background:{{ r.color[1] }}"></span>{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
-      <span class="muted small">{{ row.tenant.name }}</span>
+      <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
+      <span class="small">{{ row.tenant.name }}</span>
     </div>
-    <div class="row2">
+    <div class="grid3">
       <div><label for="rent_{{ r.id }}">{{ month_label(period) }}月租</label>
         {% if ri and ri.state != 'unpaid' %}
-        <div class="readonly"><span>{{ ri.amount|money }}</span><span class="pill {{ 'ok' if ri.state == 'paid' else 'wait' }}">{{ '已繳清' if ri.state == 'paid' else '已通知' }}</span></div>
+        <div class="readonly"><span>{{ ri.amount|money }}</span><span class="pill {{ 'ok' if ri.state == 'paid' else 'wait' }}">{{ '已繳清' if ri.state == 'paid' else '待確認' }}</span></div>
         {% else %}
-        <input id="rent_{{ r.id }}" name="rent_{{ r.id }}" type="number" min="0" inputmode="numeric"
-               value="{{ ri.amount if ri else r.rent }}">
+        <input id="rent_{{ r.id }}" name="rent_{{ r.id }}" type="number" min="0" inputmode="numeric" value="{{ ri.amount if ri else r.rent }}">
         {% endif %}</div>
+      {% if ei and ei.state != 'unpaid' %}
+      <div style="grid-column:span 2"><label>{{ month_label(elec_month) }}電費</label>
+        <div class="readonly"><span>{{ ei.amount|money }}{% if ei.kwh %}（{{ ei.kwh }} 度）{% endif %}</span><span class="pill {{ 'ok' if ei.state == 'paid' else 'wait' }}">{{ '已繳清' if ei.state == 'paid' else '待確認' }}</span></div></div>
+      {% else %}
+      <div><label for="kwh_{{ r.id }}">用電度數</label>
+        <input id="kwh_{{ r.id }}" name="kwh_{{ r.id }}" type="number" min="0" inputmode="numeric" value="{{ ei.kwh if ei and ei.kwh else '' }}" placeholder="度" data-kwh="{{ r.id }}"></div>
       <div><label for="elec_{{ r.id }}">{{ month_label(elec_month) }}電費</label>
-        {% if ei and ei.state != 'unpaid' %}
-        <div class="readonly"><span>{{ ei.amount|money }}</span><span class="pill {{ 'ok' if ei.state == 'paid' else 'wait' }}">{{ '已繳清' if ei.state == 'paid' else '已通知' }}</span></div>
-        {% else %}
-        <input id="elec_{{ r.id }}" name="elec_{{ r.id }}" type="number" min="0" inputmode="numeric"
-               value="{{ ei.amount if ei else '' }}" placeholder="不收可留空">
-        {% endif %}</div>
+        <input id="elec_{{ r.id }}" name="elec_{{ r.id }}" type="number" min="0" inputmode="numeric" value="{{ ei.amount if ei else '' }}" placeholder="不收留空" data-elec="{{ r.id }}"></div>
+      {% endif %}
     </div>
-    <input name="note_{{ r.id }}" maxlength="60" placeholder="電費備註（選填），例：1527→1640 度" value="{{ ei.note if ei else '' }}" style="margin-top:8px">
-    <div class="muted small" style="margin-top:8px">
-      {% if row.bill %}已發送過本月繳費單・{% endif %}
-      {% if row.carry %}前期未繳：{% for i in row.carry %}{{ i.label }} {{ i.amount|money }}{{ '、' if not loop.last }}{% endfor %}（會自動列在房客繳費單上）{% endif %}
+    <input name="note_{{ r.id }}" maxlength="60" placeholder="電費備註（選填），例：1527→1640" value="{{ ei.note if ei else '' }}" style="margin-top:8px">
+    <div class="small" style="margin-top:8px">
+      {% if row.bill %}<span class="ok-text">本月已發送過</span>{% endif %}
+      {% if row.carry %}<span class="warn-text">・前期未繳：{% for i in row.carry %}{{ i.label }} {{ i.amount|money }}{{ '、' if not loop.last }}{% endfor %}（會自動列在繳費單上）</span>{% endif %}
     </div>
   </div>
+  {% endfor %}
   {% else %}
   <div class="panel"><p class="muted" style="margin:0">目前沒有已綁定房客的房間。</p></div>
   {% endfor %}
 
   {% if rows %}
-  <button class="btn primary block" onclick="return confirm('確定發送繳費單？房客打開網頁就會看到。')">一鍵發送繳費單</button>
-  <p class="muted small">重複發送會更新尚未付款的金額，已付款或房客已通知的項目不會被更改。</p>
+  <button class="btn primary block" onclick="return confirm('確定發送繳費單？房客打開網頁就會看到，電費房間會同時看到台電公告電價。')">一鍵發送繳費單</button>
+  <p class="muted small">重複發送會更新尚未付款的金額；已繳清或待確認的項目不會被更改。</p>
   {% endif %}
 </form>
+<script>
+(function(){
+  var rateEl = document.getElementById('elec_rate');
+  var touched = {};
+  document.querySelectorAll('[data-elec]').forEach(function(e){
+    e.addEventListener('input', function(){ touched[e.dataset.elec] = e.value !== ''; });
+  });
+  function calc(id){
+    var k = document.querySelector('[data-kwh="'+id+'"]'), e = document.querySelector('[data-elec="'+id+'"]');
+    if (!k || !e || touched[id]) return;
+    e.value = k.value !== '' ? Math.round(+k.value * (+rateEl.value || 0)) : '';
+  }
+  document.querySelectorAll('[data-kwh]').forEach(function(k){
+    k.addEventListener('input', function(){ calc(k.dataset.kwh); });
+  });
+  rateEl.addEventListener('input', function(){
+    document.querySelectorAll('[data-kwh]').forEach(function(k){ if (k.value !== '') calc(k.dataset.kwh); });
+  });
+})();
+</script>
 {% endblock %}

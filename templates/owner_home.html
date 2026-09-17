@@ -74,13 +74,24 @@
   <h2>房間列表（{{ rooms|length }} 間）</h2>
   <a class="btn small primary" href="{{ url_for('owner_room_new') }}">＋ 新增房間</a>
 </div>
+<div class="legend-row">
+  <span class="st st-due">！費用待繳</span>
+  <span class="st st-wait">… 繳費待確認</span>
+  <span class="st st-ok">✓ 本月已繳清</span>
+  <span class="st st-late">！逾期未繳</span>
+</div>
+{% for building, rs in groups %}
+{% set c = rs[0].color %}
+<div class="bgroup-head" style="--c:{{ c[1] }}"><span class="bdot" style="background:{{ c[1] }}"></span>{{ building }}<span class="muted small">（{{ rs|length }} 間）</span></div>
 <div class="room-cards">
-{% for r in rooms %}
+{% for r in rs %}
   {% set t = r.tenant %}{% set s = status[r.id] %}
-  <div class="room-card {{ 'warn' if s[1] == 'wait' else ('late' if s[1] == 'late' else '') }}">
+  <div class="room-card" style="background:{{ c[0] }}2E;border-color:{{ c[0] }}">
     <div class="rc-top">
-      <span class="rc-name"><span class="bdot" style="background:{{ r.color[1] }}"></span>{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
-      <span class="pill {{ s[1] }}">{{ s[0] }}</span>
+      <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
+    </div>
+    <div class="st st-{{ s[1] }} st-block">
+      {% if s[1] in ('due','late') %}！{% elif s[1] == 'wait' %}…{% elif s[1] == 'ok' %}✓{% endif %} {{ s[0] }}
     </div>
     <dl class="rc-grid">
       <div><dt>房客</dt><dd>{{ t.name if t else '—' }}{% if t and not t.verified %} <span class="pill wait">新</span>{% endif %}</dd></div>
@@ -94,6 +105,7 @@
   </div>
 {% endfor %}
 </div>
+{% endfor %}
 
 {% if inactive %}
 <details class="plain" style="margin-top:14px">
@@ -131,14 +143,8 @@
 
 <h2>設定</h2>
 <div class="panel">
-  <form method="post" action="{{ url_for('owner_settings') }}" class="confirm-form" style="margin:0">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label for="elec_rate">電費每度</label>
-    <input id="elec_rate" name="elec_rate" type="number" step="0.01" min="0" value="{{ rate }}">
-    <span>元</span>
-    <button class="btn small">更新</button>
-  </form>
-  <p class="muted small" style="margin:6px 0 0">依規定不得超過台電當期夏月最高級距單價。</p>
+  <p style="margin:0">台電公告電價：每度 <strong>{{ rate }}</strong> 元</p>
+  <p class="muted small" style="margin:4px 0 0">在「發送繳費單」頁面修改，會同步顯示在房客的電費上。</p>
   <details class="plain" style="margin-top:14px">
     <summary>房客入口網址與 QR code</summary>
     <div class="qr-box">{{ qr }}</div>
