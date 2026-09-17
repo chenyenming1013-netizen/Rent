@@ -977,6 +977,9 @@ def owner_room(rid):
             tenant.pin_ver = (tenant.pin_ver or 0) + 1
             room.set_owner_code(new_code(room.id))
             flash(f"已解除 {tenant.name} 的綁定，房間變回空房，繳費紀錄已保留。新房客請用密碼 {room.code}。", "ok")
+            left = Payment.query.filter_by(tenant_id=tenant.id, status="待確認").count()
+            if left:
+                flash(f"{tenant.name} 還有 {left} 筆待確認的回報，仍會顯示在總覽，請確認收款或刪除。", "warn")
         elif action == "delete":
             used = Tenant.query.filter_by(room_id=room.id).first() or \
                 Payment.query.filter_by(room_id=room.id).first()
@@ -1005,12 +1008,15 @@ def owner_room(rid):
     if tenant:
         history = (Payment.query.filter_by(tenant_id=tenant.id)
                    .order_by(Payment.period.desc(), Payment.id.desc()).all())
+    past_pending = (Payment.query.join(Tenant)
+                    .filter(Payment.room_id == room.id, Payment.status == "待確認",
+                            Tenant.active.is_(False)).all())
     past = (Tenant.query.filter_by(room_id=room.id, active=False)
             .order_by(Tenant.moved_out_at.desc()).all())
     deletable = not (Tenant.query.filter_by(room_id=room.id).first()
                      or Payment.query.filter_by(room_id=room.id).first())
     return render_template("owner_room.html", room=room, tenant=tenant, history=history,
-                           past=past, deletable=deletable, buildings=buildings(),
+                           past=past, past_pending=past_pending, deletable=deletable, buildings=buildings(),
                            types=room_types(),
                            status=room_status(room, this_period()) if room.active else None)
 
@@ -1030,6 +1036,17 @@ def owner_pay(pid):
         if diff:
             msg += f" 與應付金額差 {diff:+,}。"
         flash(msg, "ok")
+    elif request.form.get("action") == "delete":
+        if p.confirmed:
+            flash("已確認的款項不能刪除，請先取消確認。", "warn")
+        else:
+            label = f"{p.room.name} {p.period} {p.kind_label}（{p.tenant.name}）"
+            db.session.delete(p)
+            db.session.commit()
+            flash(f"已刪除 {label} 的回報。", "ok")
+            if request.form.get("back") == "room":
+                return redirect(url_for("owner_room", rid=p.room_id))
+            return redirect(url_for("owner_home"))
     elif request.form.get("action") == "undo":
         p.status = "待確認"
         p.confirm_note = (p.confirm_note + f"｜{datetime.now():%m/%d %H:%M} 取消確認").strip("｜")

@@ -31,7 +31,7 @@
   <div class="list-item" id="pay{{ p.id }}">
     <div class="list-head">
       <strong><span class="bdot" style="background:{{ p.room.color[1] }}"></span>{{ p.room.name }} {{ p.period }}<span class="type">{{ p.kind_label }}{% if p.kind == 'both' %} 同一筆{% endif %}</span></strong>
-      <span class="muted small">{{ p.tenant.name }}</span>
+      <span class="muted small">{{ p.tenant.name }}{% if not p.tenant.active %} <span class="pill late">已退租</span>{% endif %}</span>
     </div>
     <div class="calc" style="background:#fff;padding:6px 0;margin-top:4px">
       <div><span>{{ p.pay_info }}</span><span class="{{ 'mismatch' if p.total != p.due else '' }}" style="font-weight:700">{{ p.total|money }}</span></div>
@@ -45,6 +45,12 @@
       <input id="rcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
       <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
       <button class="btn small primary">確認收款</button>
+    </form>
+    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin-top:6px"
+          onsubmit="return confirm('刪除這筆回報？刪除後無法復原。適用於測試資料或房客填錯的回報。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="delete">
+      <button class="btn link small">刪除這筆回報</button>
     </form>
   </div>
 {% endfor %}

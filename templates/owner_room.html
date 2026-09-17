@@ -84,6 +84,12 @@
       <input class="note" name="note" placeholder="備註（可空白）" aria-label="備註">
       <button class="btn small primary">確認收款</button>
     </form>
+    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin-top:6px"
+          onsubmit="return confirm('刪除這筆回報？刪除後無法復原。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="delete"><input type="hidden" name="back" value="room">
+      <button class="btn link small">刪除這筆回報</button>
+    </form>
     {% endif %}
   </div>
   {% else %}<p class="muted" style="margin:0">還沒有紀錄。</p>{% endfor %}
@@ -96,6 +102,34 @@
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
     <button class="btn danger">解除綁定（退租）</button>
   </form>
+</div>
+{% endif %}
+
+{% if past_pending %}
+<h2>已退租房客的待確認款項</h2>
+<div class="panel">
+  {% for p in past_pending %}
+  <div class="list-item">
+    <div class="list-head"><strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
+      <span class="muted small">{{ p.tenant.name }} <span class="pill late">已退租</span></span></div>
+    <div class="muted small">{{ p.detail }}・回報 {{ p.total|money }}・{{ p.pay_info }}</div>
+    <div class="confirm-form">
+      <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" class="confirm-form" style="margin:0">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="confirm"><input type="hidden" name="back" value="room">
+        <label class="small" for="prcv{{ p.id }}">實收</label>
+        <input id="prcv{{ p.id }}" name="received" type="number" value="{{ p.total }}">
+        <button class="btn small primary">確認收款</button>
+      </form>
+      <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin:0"
+            onsubmit="return confirm('刪除這筆回報？刪除後無法復原。')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="delete"><input type="hidden" name="back" value="room">
+        <button class="btn small danger">刪除</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 
