@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_art.html" import banner, rent_art %}
 {% from "_pay.html" import payment_fields, err with context %}
-{% block title %}月租繳費｜租屋小幫手{% endblock %}
+{% block title %}月租繳費並通知房東｜租屋小幫手{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
 {{ banner('月租繳費', room.name ~ '・' ~ period ~ ' 這期', rent_art(), 'warm') }}
@@ -12,7 +12,7 @@
   <div class="readonly"><span>本期應繳月租</span><span class="big">{{ room.rent|money }}</span></div>
 
   {% if separate_elec %}
-  <p class="muted small" style="margin:12px 0 0">本期電費已另外回報，這裡只回報月租。</p>
+  <p class="muted small" style="margin:12px 0 0">本期電費已另外通知房東，這裡只通知月租。</p>
   {% else %}
   <label class="chk"><input type="checkbox" name="combine" value="1" id="combine" {% if combine %}checked{% endif %}> 電費一起繳（同一筆轉帳）</label>
   <div class="combo" id="combo-box" style="margin-top:6px">

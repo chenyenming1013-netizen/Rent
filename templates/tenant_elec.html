@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_art.html" import banner, meter_art %}
 {% from "_pay.html" import payment_fields, err with context %}
-{% block title %}電費繳費｜租屋小幫手{% endblock %}
+{% block title %}電費繳費並通知房東｜租屋小幫手{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
 {{ banner('電費繳費', room.name ~ '・' ~ period ~ ' 這期', meter_art(), 'sky') }}
 {% if combined %}
 <div class="panel" style="margin-top:0">
-  <p style="margin:0"><strong>本期電費已隨月租一起回報</strong></p>
+  <p style="margin:0"><strong>本期電費已隨月租一起通知房東</strong> <span class="pill {{ 'ok' if combined.confirmed else 'wait' }}">{{ '房東已確認' if combined.confirmed else '已通知房東' }}</span></p>
   <div class="calc">
     <div><span>電表</span><span>{{ combined.meter_last }} → {{ combined.meter_now }}</span></div>
     <div><span>用電量</span><span>{{ combined.usage }} 度</span></div>
@@ -16,7 +16,7 @@
   {% if not combined.confirmed %}
   <a class="btn block" href="{{ url_for('tenant_rent') }}">到月租頁面修改</a>
   {% else %}
-  <p class="muted small" style="margin:12px 0 0">房東已確認收款。</p>
+  <p class="muted small" style="margin:12px 0 0">房東已確認收款，不能再修改。</p>
   {% endif %}
 </div>
 {% else %}
@@ -41,7 +41,7 @@
     <button class="btn primary block">送出並通知房東</button>
   </div>
 </form>
-<p class="muted small" style="margin-top:12px">想和月租同一筆轉帳，請改到「月租繳費並通知」勾選「電費一起繳」。</p>
+<p class="muted small" style="margin-top:12px">想和月租同一筆轉帳，請改到「月租繳費並通知房東」勾選「電費一起繳」。</p>
 <script>
 (function(){
   var rate = {{ rate }}, last = {{ meter_last }};

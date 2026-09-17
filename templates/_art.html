@@ -110,8 +110,8 @@
 <header class="mini-hero"><h1>{{ title }}</h1><p>{{ sub }}</p>{{ city() }}</header>
 {%- endmacro %}
 
-{% macro status_pill(p, empty_label='尚未回報') -%}
+{% macro status_pill(p, empty_label='尚未通知房東') -%}
 {% if not p %}<span class="pill todo">{{ empty_label }}</span>
-{% elif p.status == '已確認' %}<span class="pill ok">已確認</span>
-{% else %}<span class="pill wait">等待房東確認</span>{% endif %}
+{% elif p.status == '已確認' %}<span class="pill ok">房東已確認</span>
+{% else %}<span class="pill wait">已通知房東</span>{% endif %}
 {%- endmacro %}

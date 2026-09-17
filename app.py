@@ -115,9 +115,12 @@ class Tenant(db.Model):
     pin_hash = db.Column(db.String(255), default="")   # 舊版欄位，保留相容
     pin_ver = db.Column(db.Integer, default=1)         # 換密碼時加一，讓舊登入失效
     verified = db.Column(db.Boolean, default=False)    # 房東是否已核對
+    pay_day = db.Column(db.Integer)                    # 房東指定的繳租日（1~28），空白＝依入住日
 
     @property
     def due_day(self):
+        if self.pay_day and 1 <= self.pay_day <= 28:
+            return self.pay_day
         return min(self.checkin.day, 28)
 
     def due_date(self, period):
@@ -269,6 +272,11 @@ def migrate():
                          ("active", "BOOLEAN DEFAULT 1")]:
             if col not in room_cols:
                 conn.execute(text(f"ALTER TABLE room ADD COLUMN {col} {ddl}"))
+
+    tenant_cols = {c["name"] for c in inspect(db.engine).get_columns("tenant")}
+    if "pay_day" not in tenant_cols:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE tenant ADD COLUMN pay_day INTEGER"))
 
     pay_cols = {c["name"] for c in inspect(db.engine).get_columns("payment")}
     if "kind" not in pay_cols:
@@ -646,7 +654,7 @@ def tenant_rent():
     pays = period_payments(tenant, period)
     current = rent_record(pays)
     if current and current.confirmed:
-        flash(f"{period} 的月租已確認收款，不能再修改。", "warn")
+        flash(f"{period} 的月租房東已確認，不能再修改。", "warn")
         return redirect(url_for("tenant_home"))
     separate_elec = pays.get("elec")          # 電費已分開回報
     rate = float(get_setting("elec_rate", "0") or 0)
@@ -682,7 +690,7 @@ def tenant_rent():
             pay.status = "待確認"
             db.session.add(pay)
             db.session.commit()
-            flash("已送出並通知房東，等待確認。", "ok")
+            flash("月租已通知房東，等待房東確認。", "ok")
             return redirect(url_for("tenant_home"))
 
     return render_template("tenant_rent.html", room=room, tenant=tenant, period=period,
@@ -704,7 +712,7 @@ def tenant_elec():
                                combined=pays["both"])
     current = pays.get("elec")
     if current and current.confirmed:
-        flash(f"{period} 的電費已確認收款，不能再修改。", "warn")
+        flash(f"{period} 的電費房東已確認，不能再修改。", "warn")
         return redirect(url_for("tenant_home"))
     rate = float(get_setting("elec_rate", "0") or 0)
     meter_last = last_meter(room, tenant, period)
@@ -731,7 +739,7 @@ def tenant_elec():
             pay.status = "待確認"
             db.session.add(pay)
             db.session.commit()
-            flash("電費已送出並通知房東，等待確認。", "ok")
+            flash("電費已通知房東，等待房東確認。", "ok")
             return redirect(url_for("tenant_home"))
 
     return render_template("tenant_elec.html", room=room, period=period, combined=None,
@@ -844,9 +852,17 @@ def owner_home():
     recent = (Payment.query.filter_by(status="已確認")
               .order_by(Payment.confirmed_at.desc()).limit(10).all())
     inactive = Room.query.filter_by(active=False).order_by(Room.sort).all()
+    month_rows = Payment.query.filter_by(period=period).all()
+    income = {
+        "confirmed": sum(p.received or 0 for p in month_rows if p.confirmed),
+        "confirmed_n": sum(1 for p in month_rows if p.confirmed),
+        "pending": sum(p.total or 0 for p in month_rows if not p.confirmed),
+        "pending_n": sum(1 for p in month_rows if not p.confirmed),
+        "expected": sum(r.rent or 0 for r in rooms if r.tenant),
+    }
     entry = public_url(url_for("tenant_login"))
     return render_template("owner_home.html", rooms=rooms, status=status, period=period,
-                           pending=pending, recent=recent, inactive=inactive,
+                           pending=pending, recent=recent, inactive=inactive, income=income,
                            rate=get_setting("elec_rate", "0"),
                            login_locked=get_setting("tenant_login_locked") == "1",
                            entry=entry, qr=qr_svg(entry))
@@ -962,6 +978,8 @@ def owner_room(rid):
                 tenant.name = f.get("name", tenant.name).strip() or tenant.name
                 tenant.phone = f.get("phone", "").strip()
                 tenant.checkin = to_date(f.get("checkin")) or tenant.checkin
+                pd = to_int(f.get("pay_day"), 0)
+                tenant.pay_day = pd if 1 <= pd <= 28 else None
             flash("已儲存。", "ok")
         elif action == "verify" and tenant:
             tenant.verified = True

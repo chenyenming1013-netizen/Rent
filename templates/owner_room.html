@@ -57,6 +57,12 @@
     {% if tenant %}<div><label for="checkin">入住日期</label><input id="checkin" name="checkin" type="date" value="{{ tenant.checkin.isoformat() }}"></div>{% endif %}
   </div>
   {% if tenant %}
+  <label for="pay_day">每月繳租日</label>
+  <select id="pay_day" name="pay_day">
+    <option value="">依入住日（每月 {{ [tenant.checkin.day, 28]|min }} 號）</option>
+    {% for d in range(1, 29) %}<option value="{{ d }}" {% if tenant.pay_day == d %}selected{% endif %}>每月 {{ d }} 號</option>{% endfor %}
+  </select>
+  <p class="muted small" style="margin:4px 0 0">和入住日不同時才需要設定，例如約定每月 5 號繳租。</p>
   <div class="row2">
     <div><label for="name">房客姓名</label><input id="name" name="name" value="{{ tenant.name }}"></div>
     <div><label for="phone">電話</label><input id="phone" name="phone" value="{{ tenant.phone }}"></div>

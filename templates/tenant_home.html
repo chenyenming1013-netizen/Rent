@@ -18,13 +18,13 @@
 <div class="pay-cards">
   <a class="pay-card {% if rent_pay and rent_pay.confirmed %}done{% endif %}" href="{{ url_for('tenant_rent') }}">
     <span class="home-ic" style="background:#DDF1FF;color:#2F7DB5">{{ icon('cash') }}</span>
-    <span><span style="display:block;font-weight:700;font-size:18px">月租繳費並通知</span>
+    <span><span style="display:block;font-weight:700;font-size:18px">月租繳費並通知房東</span>
       <span class="meta">應繳 {{ room.rent|money }}・{{ due.month }}/{{ due.day }} 前{% if rent_pay and rent_pay.kind == 'both' %}・含電費{% endif %}</span></span>
     <span class="right">{{ status_pill(rent_pay) }}<span class="home-go">›</span></span>
   </a>
   <a class="pay-card {% if elec_pay and elec_pay.confirmed %}done{% endif %}" href="{{ url_for('tenant_elec') }}">
     <span class="home-ic" style="background:#FFF3B0;color:#9A6B00">{{ icon('bolt') }}</span>
-    <span><span style="display:block;font-weight:700;font-size:18px">電費繳費並通知</span>
+    <span><span style="display:block;font-weight:700;font-size:18px">電費繳費並通知房東</span>
       <span class="meta">{% if elec_pay %}{{ elec_pay.usage }} 度・{{ elec_pay.elec_amount|money }} 元{% if elec_pay.kind == 'both' %}・隨月租繳{% endif %}{% else %}先抄電表，自動計算金額{% endif %}</span></span>
     <span class="right">{{ status_pill(elec_pay) }}<span class="home-go">›</span></span>
   </a>
@@ -60,12 +60,12 @@
   <div class="list-item">
     <div class="list-head">
       <strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
-      <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ p.status }}</span>
+      <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ '房東已確認' if p.confirmed else '房東待確認' }}</span>
     </div>
     <div class="muted small">{{ p.detail }}・共 {{ p.total|money }}・{{ p.method }}</div>
   </div>
   {% else %}
-  <p class="muted" style="margin:0">還沒有紀錄，完成第一次回報後會出現在這裡。</p>
+  <p class="muted" style="margin:0">還沒有紀錄，第一次通知房東後會出現在這裡。</p>
   {% endfor %}
 </div>
 {% endblock %}

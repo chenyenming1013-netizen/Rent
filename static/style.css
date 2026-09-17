@@ -202,3 +202,8 @@ details.plain summary{cursor:pointer;color:var(--indigo)}
 .qr-box svg{display:block;width:100%;height:auto;background:#fff}
 .section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:32px 0 12px}
 .section-head h2{margin:0}
+.income{background:linear-gradient(135deg,#1C2733 0%,#2B3D52 100%);color:#fff;border-radius:16px;padding:18px 20px;margin:14px 0 4px}
+.income .lbl{font-size:14px;color:#B9C3CD}
+.income .num{font-size:36px;font-weight:700;letter-spacing:.02em;line-height:1.2;margin:2px 0 8px}
+.income .sub{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:#DCE3EA}
+.income .sub b{color:#FFD447;font-weight:700}

@@ -14,6 +14,16 @@
 </div>
 {{ mini_hero('租屋總覽', period ~ ' 這期') }}
 
+<section class="income" aria-label="本月總收入">
+  <div class="lbl">{{ period }} 本月總收入（已確認）</div>
+  <div class="num">NT$ {{ income.confirmed|money }}</div>
+  <div class="sub">
+    <span>已確認 {{ income.confirmed_n }} 筆</span>
+    <span>待確認 <b>{{ income.pending_n }}</b> 筆・{{ income.pending|money }} 元</span>
+    <span>本月應收月租 {{ income.expected|money }}（不含電費）</span>
+  </div>
+</section>
+
 {% if login_locked %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
   <span>密碼錯誤次數太多，房客登入已暫停。已登入的房客不受影響。</span>
