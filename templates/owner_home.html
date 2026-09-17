@@ -84,14 +84,16 @@
   {% set t = r.tenant %}{% set s = status[r.id] %}
   <div class="room-card" style="background:{{ c[0] }}2E;border-color:{{ c[0] }}">
     <div class="rc-top">
-      <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span></span>
+      <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span>
+        {% if t %}<span class="tenant-name">{{ t.name }}{% if not t.verified %} <span class="pill wait">新</span>{% endif %}</span>
+        {% else %}<span class="tenant-name muted">未登記</span>{% endif %}</span>
     </div>
     <div class="st st-{{ s[1] }} st-block">
       {% if s[1] in ('due','late') %}！{% elif s[1] == 'wait' %}…{% elif s[1] == 'ok' %}✓{% endif %} {{ s[0] }}
     </div>
     <dl class="rc-grid">
-      <div><dt>房客</dt><dd>{{ t.name if t else '—' }}{% if t and not t.verified %} <span class="pill wait">新</span>{% endif %}</dd></div>
       <div><dt>月租</dt><dd>{{ r.rent|money }}</dd></div>
+      <div><dt>入住日</dt><dd>{{ t.checkin.strftime('%Y/%m/%d') if t else '—' }}</dd></div>
       <div><dt>房客密碼</dt><dd style="letter-spacing:.12em">{% if r.custom_code %}<span class="small">自訂</span>{% else %}{{ r.code }}{% endif %}</dd></div>
     </dl>
     <div class="rc-btns">
