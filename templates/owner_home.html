@@ -143,6 +143,32 @@
   {% endfor %}
 </div>
 
+<h2>目前的通知對象</h2>
+<div class="panel">
+  {% if not line_on %}
+  <p class="muted" style="margin:0">尚未設定 LINE 金鑰，目前不會發送任何通知。</p>
+  {% else %}
+  <div class="list-item list-head">
+    <span><strong>房東</strong><span class="muted small">・收到房客付款通知與每日摘要</span></span>
+    <span>{% set ls = line_users|selectattr('role','equalto','landlord')|list %}
+      {% if ls %}{% for u in ls %}{{ u.name or 'LINE 使用者' }}{{ '、' if not loop.last }}{% endfor %}
+      {% else %}<span class="st st-due" style="font-size:12px">！未綁定</span>{% endif %}</span>
+  </div>
+  <div class="list-item list-head">
+    <span><strong>管理者</strong><span class="muted small">・收到系統異常通知</span></span>
+    <span>{% set as_ = line_users|selectattr('role','equalto','admin')|list %}
+      {% if as_ %}{% for u in as_ %}{{ u.name or 'LINE 使用者' }}{{ '、' if not loop.last }}{% endfor %}
+      {% else %}<span class="st st-none" style="font-size:12px">未綁定</span>{% endif %}</span>
+  </div>
+  <div class="list-item list-head">
+    <span><strong>公告群組</strong><span class="muted small">・繳費單發出時通知</span></span>
+    <span>{% if line_group_list %}{{ line_group_list|length }} 個群組{% else %}<span class="st st-none" style="font-size:12px">未設定</span>{% endif %}</span>
+  </div>
+  {% endif %}
+  {% if is_admin %}<p style="margin:12px 0 0"><a href="{{ url_for('owner_admin') }}">到系統設定綁定或解除</a></p>
+  {% else %}<p class="muted small" style="margin:12px 0 0">需要調整請聯絡管理者。</p>{% endif %}
+</div>
+
 <h2>設定</h2>
 <div class="panel">
   <p style="margin:0">台電公告電價：每度 <strong>{{ rate }}</strong> 元</p>

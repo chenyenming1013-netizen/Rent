@@ -79,8 +79,9 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="row2">
         <div><label for="name">姓名</label><input id="name" name="name" value="{{ tenant.name }}" required></div>
-        <div><label for="phone">電話</label><input id="phone" name="phone" inputmode="tel" value="{{ tenant.phone }}"></div>
+        <div><label for="phone">電話（選填）</label><input id="phone" name="phone" inputmode="tel" value="{{ tenant.phone }}" placeholder="可留空"></div>
       </div>
+      <p class="muted small" style="margin:8px 0 0">電話留空也沒關係，系統不會用它發送訊息。</p>
       <button class="btn block">儲存</button>
     </form>
   </details>

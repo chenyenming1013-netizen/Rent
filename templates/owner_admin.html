@@ -71,7 +71,7 @@
 <div class="panel">
   {% for u in users %}
   <div class="list-item list-head">
-    <span>{{ {'tenant':'房客','landlord':'房東','admin':'管理者'}[u.role] }}
+    <span><strong>{{ u.name or 'LINE 使用者' }}</strong>・{{ {'tenant':'房客','landlord':'房東','admin':'管理者'}[u.role] }}
       {% if u.tenant %}・{{ u.tenant.name }}（{{ u.tenant.room_id and u.tenant.active and '在住' or '已退租' }}）{% endif %}
       <span class="muted small">・{{ u.created_at.strftime('%Y/%m/%d') }}</span></span>
     <form method="post" onsubmit="return confirm('解除這個 LINE 綁定？')"><input type="hidden" name="csrf" value="{{ csrf }}">

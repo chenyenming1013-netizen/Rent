@@ -8,8 +8,9 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label for="name">姓名</label>
   <input id="name" name="name" value="{{ form.get('name','') }}" required autofocus>
-  <label for="phone">電話</label>
-  <input id="phone" name="phone" inputmode="tel" value="{{ form.get('phone','') }}">
+  <label for="phone">電話（選填，可不填）</label>
+  <input id="phone" name="phone" inputmode="tel" value="{{ form.get('phone','') }}" placeholder="不想留可以空白">
+  <p class="muted small" style="margin:4px 0 0">系統不會用電話發送任何訊息，只是房東聯絡用。不填也能正常使用。</p>
   <label for="checkin">入住日期</label>
   <input id="checkin" name="checkin" type="date" value="{{ form.get('checkin','') }}" required>
   <div class="calc">

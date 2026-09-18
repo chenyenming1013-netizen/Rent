@@ -69,6 +69,19 @@ def group_summary(gid):
         return ""
 
 
+def profile(uid):
+    """取得使用者的 LINE 顯示名稱；失敗時回傳空字串。"""
+    if not token():
+        return ""
+    req = urllib.request.Request(f"{API}/profile/{uid}",
+                                 headers={"Authorization": f"Bearer {token()}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode()).get("displayName", "")
+    except Exception:
+        return ""
+
+
 def push(to, texts):
     return _post("/message/push", {"to": to, "messages": _messages(texts)})
 

@@ -283,6 +283,7 @@ class LineUser(db.Model):
     """綁定到 LINE 官方帳號的人。role：tenant 房客、landlord 房東、admin 管理者。"""
     user_id = db.Column(db.String(64), primary_key=True)
     role = db.Column(db.String(10), nullable=False)
+    name = db.Column(db.String(60), default="")          # LINE 顯示名稱
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenant.id"))
     created_at = db.Column(db.DateTime, default=tw_now)
     tenant = db.relationship("Tenant")
@@ -378,6 +379,12 @@ def migrate():
     if "pay_day" not in tenant_cols:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE tenant ADD COLUMN pay_day INTEGER"))
+
+    if inspect(db.engine).has_table("line_user"):
+        lu_cols = {c["name"] for c in inspect(db.engine).get_columns("line_user")}
+        if "name" not in lu_cols:
+            with db.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE line_user ADD COLUMN name VARCHAR(60)"))
 
     item_cols = {c["name"] for c in inspect(db.engine).get_columns("bill_item")}
     with db.engine.begin() as conn:
@@ -1127,11 +1134,14 @@ def owner_home():
     }
     unbilled = sum(1 for r in rooms if r.tenant and not
                    Bill.query.filter_by(tenant_id=r.tenant.id, period=period).first())
+    line_users = LineUser.query.order_by(LineUser.role, LineUser.created_at).all()
     renewed = get_setting("pa_renewed_at")
     renew_days = (tw_today() - date.fromisoformat(renewed)).days if renewed else None
     years = sorted({b.period[:4] for b in Bill.query.all()} | {str(tw_today().year)}, reverse=True)
     entry = public_url(url_for("tenant_login"))
     return render_template("owner_home.html", unbilled=unbilled, years=years,
+                           line_users=line_users, line_group_list=line_groups(),
+                           line_on=line_api.enabled(),
                            renew_days=renew_days, renewed=renewed,
                            groups=group_by_building(rooms), rooms=rooms, status=status, period=period,
                            pending=pending, recent=recent, inactive=inactive, income=income,
@@ -1700,7 +1710,7 @@ def handle_line_event(ev):
             role = open_info["role"]
             set_setting("open_bind", "")
             LineUser.query.filter_by(user_id=uid).delete()
-            db.session.add(LineUser(user_id=uid, role=role))
+            db.session.add(LineUser(user_id=uid, role=role, name=line_api.profile(uid)))
             db.session.commit()
             reply(f"已綁定為{ROLE_LABEL[role]}。" + ("房客付款時會通知你，每天早上也會收到待辦摘要。"
                                                   if role == "landlord" else "系統異常時會通知你。"))
@@ -1717,7 +1727,7 @@ def handle_line_event(ev):
             reply("錯誤太多次，請一小時後再試。")
         elif use_bind_code(kind, arg):
             LineUser.query.filter_by(user_id=uid).delete()
-            db.session.add(LineUser(user_id=uid, role=kind))
+            db.session.add(LineUser(user_id=uid, role=kind, name=line_api.profile(uid)))
             db.session.commit()
             reply(f"已綁定為{ROLE_LABEL[kind]}。" + ("房客付款時會通知你，每天早上也會收到待辦摘要。"
                                                   if kind == "landlord" else "系統異常時會通知你。"))
