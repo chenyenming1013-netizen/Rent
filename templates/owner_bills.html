@@ -60,8 +60,15 @@
   </div>
   {% endfor %}
   {% else %}
-  <div class="panel"><p class="muted" style="margin:0">目前沒有已綁定房客的房間。</p></div>
+  <div class="panel"><p class="muted" style="margin:0">{{ '所有房間本月都已繳清。' if done_rows else '目前沒有已綁定房客的房間。' }}</p></div>
   {% endfor %}
+
+  {% if done_rows %}
+  <div class="panel">
+    <p style="margin:0"><strong>本月已繳清，不會再發送（{{ done_rows|length }} 間）</strong></p>
+    <p class="muted small" style="margin:6px 0 0">{% for d in done_rows %}{{ d.room.name }}（{{ d.tenant.name }}）{{ '、' if not loop.last }}{% endfor %}</p>
+  </div>
+  {% endif %}
 
   {% if rows %}
   <label class="chk"><input type="checkbox" name="announce" value="1" checked> 同時在 LINE 公告群組發出通知（不含房號與金額）</label>

@@ -1083,6 +1083,8 @@ def owner_bills():
         sent, skipped = [], []
         for r in rooms:
             t = r.tenant
+            if f.get(f"rent_{r.id}") is None and f.get(f"elec_{r.id}") is None:
+                continue  # 本月已繳清的房間不在表單裡
             rent = max(to_int(f.get(f"rent_{r.id}"), 0), 0)
             kwh = max(to_int(f.get(f"kwh_{r.id}"), 0), 0)
             elec = max(to_int(f.get(f"elec_{r.id}"), 0), 0)
@@ -1119,7 +1121,8 @@ def owner_bills():
             flash(f"已發送繳費單給 {len(sent)} 間：{'、'.join(sent)}。", "ok")
             if request.form.get("announce", "1") == "1":
                 if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
-                                f"{site_url('tenant_login')}", "bill_group"):
+                                f"{site_url('tenant_login')}\n"
+                                "若您已完成繳費，請忽略此通知", "bill_group"):
                     flash("已在公告群組發出通知。", "ok")
                 elif line_api.enabled() and not get_setting("line_group_id"):
                     flash("尚未設定公告群組，這次沒有發出群組通知。", "warn")
@@ -1135,16 +1138,21 @@ def owner_bills():
         bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
         rent_item = BillItem.query.filter_by(tenant_id=t.id, kind="rent", month=period).first()
         elec_item = BillItem.query.filter_by(tenant_id=t.id, kind="elec", month=elec_month).first()
-        rows.append({"room": r, "tenant": t, "bill": bill,
+        open_ = [i for i in unpaid_items(t) if i.state == "unpaid"]
+        done = bool(bill) and not open_ and all(i.paid for i in bill.items)
+        rows.append({"room": r, "tenant": t, "bill": bill, "done": done,
                      "rent_item": rent_item, "elec_item": elec_item,
                      "carry": [i for i in unpaid_items(t)
                                if i.month < period and not (i.kind == "elec" and i.month == elec_month)]})
     grouped = {}
     for row in rows:
+        if row["done"]:
+            continue
         grouped.setdefault(row["room"].building, []).append(row)
     order = buildings()
     grouped = sorted(grouped.items(), key=lambda kv: order.index(kv[0]) if kv[0] in order else 99)
-    return render_template("owner_bills.html", rows=rows, grouped=grouped, period=period,
+    return render_template("owner_bills.html", rows=[r for r in rows if not r["done"]],
+                           done_rows=[r for r in rows if r["done"]], grouped=grouped, period=period,
                            elec_month=elec_month, months=months,
                            rate=get_setting("elec_rate", "0"))
 
