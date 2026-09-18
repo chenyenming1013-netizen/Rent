@@ -53,6 +53,14 @@
       {% endif %}
     </div>
     <input name="note_{{ r.id }}" maxlength="60" placeholder="電費備註（選填），例：1527→1640" value="{{ ei.note if ei else '' }}" style="margin-top:8px">
+    {% if (ri and ri.issue) or (ei and ei.issue) %}
+    <div class="flash warn" style="margin:8px 0 0">
+      <strong>房客回報金額有誤：</strong>
+      {% if ri and ri.issue %}<br>{{ ri.label }}：{{ ri.issue }}{% endif %}
+      {% if ei and ei.issue %}<br>{{ ei.label }}：{{ ei.issue }}{% endif %}
+      <br><span class="small">改好金額後重新發送，這個提示就會消失。</span>
+    </div>
+    {% endif %}
     <div class="small" style="margin-top:8px">
       {% if row.bill %}<span class="ok-text">本月已發送過</span>{% endif %}
       {% if row.carry %}<span class="warn-text">・前期未繳：{% for i in row.carry %}{{ i.label }} {{ i.amount|money }}{{ '、' if not loop.last }}{% endfor %}（會自動列在繳費單上）</span>{% endif %}

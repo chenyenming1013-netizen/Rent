@@ -10,14 +10,17 @@ import io
 import json
 import os
 import secrets
+import csv
+import io as _io
+import urllib.parse
 import zlib
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import qrcode
 import qrcode.image.svg
-from flask import (Flask, abort, flash, redirect, render_template, request,
-                   session, url_for)
+from flask import (Flask, Response, abort, flash, redirect, render_template,
+                   request, session, url_for)
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import Markup
 from sqlalchemy import inspect, text
@@ -233,6 +236,8 @@ class Bill(db.Model):
     updated_at = db.Column(db.DateTime, default=tw_now, onupdate=tw_now)
     items = db.relationship("BillItem", backref="bill", cascade="all, delete-orphan",
                             order_by="BillItem.id")
+    room = db.relationship("Room")
+    tenant = db.relationship("Tenant")
     __table_args__ = (db.UniqueConstraint("tenant_id", "period"),)
 
 
@@ -249,6 +254,8 @@ class BillItem(db.Model):
     rate = db.Column(db.Float)                           # 當時的台電公告電價（每度）
     payment_id = db.Column(db.Integer, db.ForeignKey("payment.id"))
     source_payment_id = db.Column(db.Integer)            # 差額項目來自哪一筆付款
+    issue = db.Column(db.String(200))                    # 房客回報金額有誤的說明
+    issue_at = db.Column(db.DateTime)
     paid = db.Column(db.Boolean, default=False)
     paid_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=tw_now)
@@ -378,6 +385,9 @@ def migrate():
             conn.execute(text("ALTER TABLE bill_item ADD COLUMN rate FLOAT"))
         if "source_payment_id" not in item_cols:
             conn.execute(text("ALTER TABLE bill_item ADD COLUMN source_payment_id INTEGER"))
+        if "issue" not in item_cols:
+            conn.execute(text("ALTER TABLE bill_item ADD COLUMN issue VARCHAR(200)"))
+            conn.execute(text("ALTER TABLE bill_item ADD COLUMN issue_at DATETIME"))
 
     pay_cols = {c["name"] for c in inspect(db.engine).get_columns("payment")}
     if "kind" not in pay_cols:
@@ -493,6 +503,14 @@ def prev_month(period):
     return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
 
 
+PAY_QR_PATH = os.path.join(app.root_path, "static", "uploads", "pay_qr.png")
+
+
+def pay_account():
+    return {"bank": get_setting("pay_bank", ""), "account": get_setting("pay_account", ""),
+            "note": get_setting("pay_note", ""), "qr": os.path.exists(PAY_QR_PATH)}
+
+
 def public_url(path):
     host = request.host
     scheme = "http" if host.startswith(("127.0.0.1", "localhost")) else "https"
@@ -519,6 +537,7 @@ def inject():
         session["csrf"] = secrets.token_hex(16)
     return {"csrf": session["csrf"], "today": tw_today(),
             "PAY_METHODS": PAY_METHODS, "month_label": month_label,
+            "pay_account": pay_account(),
             "role": session.get("role") if owner_required() else None,
             "is_admin": admin_required(), "LINE_BASIC_ID": LINE_BASIC_ID}
 
@@ -830,6 +849,34 @@ def tenant_old_pages():
     return redirect(url_for("tenant_home"))
 
 
+@app.route("/tenant/issue/<int:iid>", methods=["GET", "POST"])
+def tenant_issue(iid):
+    room, tenant, go = tenant_or_login()
+    if go:
+        return go
+    item = db.get_or_404(BillItem, iid)
+    if item.tenant_id != tenant.id:
+        abort(404)
+    if item.state != "unpaid":
+        flash("這個項目已經繳費或已通知房東，如需更正請直接聯絡房東。", "warn")
+        return redirect(url_for("tenant_home"))
+    error = None
+    if request.method == "POST":
+        note = request.form.get("note", "").strip()
+        if len(note) < 2:
+            error = "請簡單說明哪裡不對，例如「電費應該是 480」。"
+        else:
+            item.issue, item.issue_at = note[:200], tw_now()
+            db.session.commit()
+            notify_landlords(
+                f"【金額有誤】{room.name} {tenant.name}\n{item.label} 目前 {item.amount:,} 元\n"
+                f"房客說明：{note[:120]}\n\n修改金額：{site_url('owner_bills')}", "issue")
+            flash("已回報房東，請等房東確認並修改金額。", "ok")
+            return redirect(url_for("tenant_home"))
+    return render_template("tenant_issue.html", room=room, item=item, error=error,
+                           form=request.form if request.method == "POST" else None)
+
+
 @app.route("/tenant/pay", methods=["GET", "POST"])
 def tenant_pay():
     room, tenant, go = tenant_or_login()
@@ -1049,8 +1096,12 @@ def owner_home():
     }
     unbilled = sum(1 for r in rooms if r.tenant and not
                    Bill.query.filter_by(tenant_id=r.tenant.id, period=period).first())
+    renewed = get_setting("pa_renewed_at")
+    renew_days = (tw_today() - date.fromisoformat(renewed)).days if renewed else None
+    years = sorted({b.period[:4] for b in Bill.query.all()} | {str(tw_today().year)}, reverse=True)
     entry = public_url(url_for("tenant_login"))
-    return render_template("owner_home.html", unbilled=unbilled,
+    return render_template("owner_home.html", unbilled=unbilled, years=years,
+                           renew_days=renew_days, renewed=renewed,
                            groups=group_by_building(rooms), rooms=rooms, status=status, period=period,
                            pending=pending, recent=recent, inactive=inactive, income=income,
                            rate=get_setting("elec_rate", "0"),
@@ -1110,6 +1161,7 @@ def owner_bills():
                     continue
                 if item:
                     item.amount, item.note = amount, note or item.note
+                    item.issue, item.issue_at = None, None
                     for k, v in extra.items():
                         setattr(item, k, v)
                 else:
@@ -1304,6 +1356,16 @@ def owner_room(rid):
                 tenant.pin_ver = (tenant.pin_ver or 0) + 1
             flash(f"{room.name} 的新密碼是 {room.code}，舊密碼已失效，房客要用新密碼重新登入。", "ok")
         elif action == "moveout" and tenant:
+            unpaid = [i for i in unpaid_items(tenant) if i.state == "unpaid" and i.amount > 0]
+            how = request.form.get("unpaid_action", "keep")
+            if unpaid and how in ("deposit", "cash"):
+                label = "押金扣抵" if how == "deposit" else "退租時收現金"
+                for i in unpaid:
+                    i.paid, i.paid_at = True, tw_now()
+                    i.note = (f"{i.note}｜{label}" if i.note else label)[:60]
+                flash(f"{len(unpaid)} 筆未繳項目已標記為「{label}」結清。", "ok")
+            elif unpaid:
+                flash(f"{len(unpaid)} 筆未繳項目仍保留在系統中，會繼續顯示在總覽。", "warn")
             tenant.active = False
             tenant.moved_out_at = tw_now()
             tenant.pin_ver = (tenant.pin_ver or 0) + 1
@@ -1439,6 +1501,58 @@ def owner_pay(pid):
             flash(f"{p.room.name} {p.kind_label} 已取消確認。", "warn")
     db.session.commit()
     return redirect(url_for("owner_room", rid=p.room_id) if back == "room" else url_for("owner_home"))
+
+
+def _csv_response(rows, filename):
+    buf = _io.StringIO()
+    w = csv.writer(buf)
+    w.writerows(rows)
+    data = "\ufeff" + buf.getvalue()          # 加 BOM，Excel 開中文才不會亂碼
+    quoted = urllib.parse.quote(filename)
+    return Response(data, mimetype="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f"attachment; filename=export.csv; filename*=UTF-8''{quoted}"})
+
+
+@app.route("/owner/export/<kind>")
+def owner_export(kind):
+    if (g := owner_guard()):
+        return g
+    year = request.args.get("year", str(tw_today().year))
+    if kind == "items":
+        rows = [["期別", "物件", "房間", "房型", "房客", "項目", "費用月份", "金額",
+                 "用電度數", "每度電價", "狀態", "繳清時間", "備註"]]
+        q = (BillItem.query.join(Bill).join(Tenant, BillItem.tenant_id == Tenant.id)
+             .filter(Bill.period.like(f"{year}-%"))
+             .order_by(Bill.period, BillItem.id).all())
+        for i in q:
+            room, ten = i.bill.room, i.bill.tenant
+            rows.append([i.bill.period, room.building, room.name, room.room_type,
+                         ten.name if ten else "",
+                         {"rent": "月租", "elec": "電費", "diff": "差額"}.get(i.kind, i.kind),
+                         i.month, i.amount, i.kwh or "", f"{i.rate:g}" if i.rate else "",
+                         "已繳清" if i.paid else ("已通知房東" if i.payment_id else "未繳"),
+                         i.paid_at.strftime("%Y/%m/%d %H:%M") if i.paid_at else "", i.note or ""])
+        total = sum(i.amount for i in q if i.paid)
+        rows.append([])
+        rows.append(["已繳清合計", "", "", "", "", "", "", total])
+        return _csv_response(rows, f"繳費單明細_{year}.csv")
+
+    if kind == "payments":
+        rows = [["付款日期", "期別", "物件", "房間", "房客", "付款方式", "末五碼／付款人",
+                 "回報金額", "實收金額", "狀態", "確認時間", "項目", "備註"]]
+        q = (Payment.query.filter(Payment.period.like(f"{year}-%"))
+             .order_by(Payment.paid_date, Payment.id).all())
+        for p in q:
+            rows.append([p.paid_date.strftime("%Y/%m/%d") if p.paid_date else "", p.period,
+                         p.room.building, p.room.name, p.tenant.name, p.method,
+                         p.last5 or p.payer or "", p.total, p.received if p.received is not None else "",
+                         p.status, p.confirmed_at.strftime("%Y/%m/%d %H:%M") if p.confirmed_at else "",
+                         p.detail, p.confirm_note or ""])
+        total = sum(p.received or 0 for p in q if p.confirmed)
+        rows.append([])
+        rows.append(["實收合計", "", "", "", "", "", "", "", total])
+        return _csv_response(rows, f"付款紀錄_{year}.csv")
+    abort(404)
 
 
 @app.route("/owner/settings", methods=["POST"])
@@ -1608,8 +1722,19 @@ def daily_job(today):
         elif 0 <= days <= 3:
             soon.append(room.name)
 
+    renewed = get_setting("pa_renewed_at")
+    if renewed:
+        days = (today - date.fromisoformat(renewed)).days
+        if days >= 25:
+            alert_admin(f"PythonAnywhere 網站已經 {days} 天沒有延長，請登入按 "
+                        "「Run until 1 month from today」，否則網站會停止。\n"
+                        "https://www.pythonanywhere.com/user/cym1013/webapps/")
+
+    issues = BillItem.query.filter(BillItem.issue.isnot(None), BillItem.paid.is_(False)).count()
     pending = Payment.query.filter_by(status="待確認").count()
     lines = []
+    if issues:
+        lines.append(f"・房客回報金額有誤 {issues} 筆")
     if pending:
         lines.append(f"・待確認收款 {pending} 筆")
     if late_rooms:
@@ -1665,6 +1790,34 @@ def owner_admin():
             set_setting("landlord_contact", f.get("contact", "").strip()[:80])
             db.session.commit()
             flash("已更新房東聯絡方式。", "ok")
+        elif action == "renewed":
+            set_setting("pa_renewed_at", tw_today().isoformat())
+            db.session.commit()
+            flash("已記錄今天的延長日期，25 天後會提醒你。", "ok")
+        elif action == "pay_account":
+            set_setting("pay_bank", f.get("bank", "").strip()[:60])
+            set_setting("pay_account", f.get("account", "").strip()[:40])
+            set_setting("pay_note", f.get("note", "").strip()[:100])
+            db.session.commit()
+            flash("已更新繳費帳號。", "ok")
+        elif action == "pay_qr":
+            file = request.files.get("qr")
+            data = file.read(3 * 1024 * 1024 + 1) if file else b""
+            if not data:
+                flash("請選擇圖片檔。", "warn")
+            elif len(data) > 3 * 1024 * 1024:
+                flash("圖片請小於 3MB。", "warn")
+            elif not data[:8].startswith((b"\x89PNG", b"\xff\xd8")):
+                flash("只接受 PNG 或 JPG 圖片。", "warn")
+            else:
+                os.makedirs(os.path.dirname(PAY_QR_PATH), exist_ok=True)
+                with open(PAY_QR_PATH, "wb") as fh:
+                    fh.write(data)
+                flash("已更新繳費 QR code。", "ok")
+        elif action == "pay_qr_del":
+            if os.path.exists(PAY_QR_PATH):
+                os.remove(PAY_QR_PATH)
+            flash("已刪除繳費 QR code。", "ok")
         elif action == "unbind":
             LineUser.query.filter_by(user_id=f.get("uid", "")).delete()
             db.session.commit()
@@ -1697,7 +1850,8 @@ def owner_admin():
         contact=get_setting("landlord_contact", ""),
         callback_url=site_url("line_callback"),
         cron_url=(site_url("cron_daily") + "?key=" + CRON_KEY) if CRON_KEY else "",
-        cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES)
+        cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES,
+        renewed=get_setting("pa_renewed_at"), pay=pay_account())
 
 
 if __name__ == "__main__":

@@ -252,3 +252,5 @@ details.plain summary{cursor:pointer;color:var(--indigo)}
 code{word-break:break-all}
 .tenant-name{display:inline-block;margin-left:8px;font-size:15px;font-weight:500;color:var(--ink)}
 .tenant-name.muted{color:var(--soft);font-weight:400}
+.pay-acct .acct-no{font-size:20px;font-weight:700;letter-spacing:.04em;margin:4px 0 8px;word-break:break-all}
+.pay-qr{display:block;width:190px;max-width:100%;height:auto;margin:10px 0;background:#fff;border-radius:8px;padding:6px}

@@ -23,7 +23,11 @@
     {% if i.kind == 'elec' and i.rate is not none %}<span class="muted small" style="display:block">台電公告電價：每度 {{ '%g'|format(i.rate) }} 元</span>{% endif %}
     {% if i.note %}<span class="muted small" style="display:block">{{ i.note }}</span>{% endif %}
     {% if (i.kind in ('elec','diff') or carry) and i.amount > 0 %}<span class="small {{ 'ok-text' if i.state == 'paid' else 'warn-text' }}" style="display:block">{{ month_label(i.month) }}份{{ '已繳清' if i.state == 'paid' else '尚未繳清' }}</span>{% endif %}</span>
-  <span class="bill-amt">{{ i.amount|money }} 元</span>
+  <span class="bill-amt">{{ i.amount|money }} 元
+    {% if i.state == 'unpaid' and i.amount > 0 %}
+      {% if i.issue %}<span class="small warn-text" style="display:block;font-weight:400">已回報，等房東處理</span>
+      {% else %}<a class="small" style="display:block;font-weight:400" href="{{ url_for('tenant_issue', iid=i.id) }}">金額有誤？</a>{% endif %}
+    {% endif %}</span>
   <span class="bill-st">{% if i.state == 'paid' %}<span class="pill ok">房東已確認</span>{% elif i.state == 'pending' %}<span class="pill wait">已通知房東</span>{% elif i.amount < 0 %}<span class="pill ok">下期折抵</span>{% else %}<span class="pill late">未繳</span>{% endif %}</span>
 </div>
 {%- endmacro %}
@@ -36,6 +40,20 @@
   {% if older %}
   <div class="carry-head">之前尚未繳清</div>
   {% for i in older %}{{ item_row(i, True) }}{% endfor %}
+  {% endif %}
+  {% if payable_total > 0 and (pay_account.account or pay_account.qr) %}
+  <details class="plain" style="margin-top:12px">
+    <summary>繳費帳號</summary>
+    <div class="pay-acct">
+      {% if pay_account.bank %}<p style="margin:6px 0 0">{{ pay_account.bank }}</p>{% endif %}
+      {% if pay_account.account %}
+      <p class="acct-no">{{ pay_account.account }}</p>
+      <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ pay_account.account }}').then(()=>this.textContent='已複製帳號')">複製帳號</button>
+      {% endif %}
+      {% if pay_account.qr %}<img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="繳費 QR code">{% endif %}
+      {% if pay_account.note %}<p class="muted small">{{ pay_account.note }}</p>{% endif %}
+    </div>
+  </details>
   {% endif %}
   {% if payable_total > 0 %}
   <div class="bill-total"><span>尚未繳納合計</span><strong>{{ payable_total|money }} 元</strong></div>

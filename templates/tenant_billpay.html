@@ -17,6 +17,19 @@
 </div>
 {% endfor %}
 
+{% if pay_account.account or pay_account.qr %}
+<div class="panel pay-acct" style="margin-top:0">
+  <strong>繳費帳號</strong>
+  {% if pay_account.bank %}<p style="margin:6px 0 0">{{ pay_account.bank }}</p>{% endif %}
+  {% if pay_account.account %}
+  <p class="acct-no">{{ pay_account.account }}</p>
+  <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ pay_account.account }}').then(()=>this.textContent='已複製帳號')">複製帳號</button>
+  {% endif %}
+  {% if pay_account.qr %}<img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="繳費 QR code">{% endif %}
+  {% if pay_account.note %}<p class="muted small">{{ pay_account.note }}</p>{% endif %}
+</div>
+{% endif %}
+
 {% if not payable %}
 <div class="panel" style="margin-top:0"><p style="margin:0">目前沒有需要繳納的項目。</p></div>
 {% else %}

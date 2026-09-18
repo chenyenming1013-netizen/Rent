@@ -72,6 +72,46 @@
   </form>
 </div>
 
+<h2>繳費帳號（顯示在房客的繳費畫面）</h2>
+<div class="panel">
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_account">
+    <label for="bank">銀行與分行</label>
+    <input id="bank" name="bank" maxlength="60" value="{{ pay.bank }}" placeholder="例：台北富邦｜忠孝分行">
+    <label for="account">帳號</label>
+    <input id="account" name="account" maxlength="40" value="{{ pay.account }}" placeholder="例：012-0000305168611159">
+    <label for="paynote">備註（選填）</label>
+    <input id="paynote" name="note" maxlength="100" value="{{ pay.note }}" placeholder="例：轉帳後請填末五碼">
+    <button class="btn block">儲存繳費帳號</button>
+  </form>
+  <form method="post" enctype="multipart/form-data" class="stack" style="margin-top:14px">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr">
+    <label for="qr">繳費 QR code 圖片（PNG 或 JPG，3MB 以內）</label>
+    <input id="qr" name="qr" type="file" accept="image/png,image/jpeg" required>
+    <button class="btn block">上傳 QR code</button>
+  </form>
+  {% if pay.qr %}
+  <div style="margin-top:12px">
+    <img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="目前的繳費 QR code">
+    <form method="post" onsubmit="return confirm('刪除 QR code？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr_del">
+      <button class="btn link small">刪除 QR code</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<h2>PythonAnywhere 網站延長</h2>
+<div class="panel">
+  <p style="margin:0">上次延長：{{ renewed or '尚未記錄' }}</p>
+  <p class="muted small">每月要登入 PythonAnywhere 按「Run until 1 month from today」。按下方按鈕記錄日期，超過 25 天系統會用 LINE 提醒你。</p>
+  <div class="btn-row">
+    <a class="btn small" href="https://www.pythonanywhere.com/user/cym1013/webapps/" target="_blank" rel="noopener">前往延長</a>
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="renewed">
+      <button class="btn small primary">我已延長，記錄今天</button></form>
+  </div>
+</div>
+
 <h2>每日檢查排程</h2>
 <div class="panel">
   {% if cron_url %}

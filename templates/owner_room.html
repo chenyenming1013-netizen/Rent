@@ -83,7 +83,8 @@
   {% for i in open_items %}
   <div class="list-item list-head">
     <span>{{ i.label }} {{ i.amount|money }} 元{% if i.note %}<span class="muted small">・{{ i.note }}</span>{% endif %}
-      <span class="pill {{ 'wait' if i.state == 'pending' else 'late' }}">{{ '房客已通知' if i.state == 'pending' else '未繳' }}</span></span>
+      <span class="pill {{ 'wait' if i.state == 'pending' else 'late' }}">{{ '房客已通知' if i.state == 'pending' else '未繳' }}</span>
+      {% if i.issue %}<span class="small warn-text" style="display:block">房客回報：{{ i.issue }}</span>{% endif %}</span>
     {% if i.state == 'unpaid' %}
     <form method="post" action="{{ url_for('owner_bill_item_delete', iid=i.id) }}" onsubmit="return confirm('刪除 {{ i.label }}？')">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="room">
@@ -118,9 +119,18 @@
 {% if is_admin %}
 <h2>退租</h2>
 <div class="panel">
-  <p class="muted small" style="margin-top:0">解除綁定後房間變回空房、自動換新密碼，繳費紀錄會保留。</p>
-  <form method="post" onsubmit="return confirm('確定解除 {{ tenant.name }} 的綁定？')">
+  <p class="muted small" style="margin-top:0">解除綁定後房間變回空房、自動換新密碼，繳費紀錄會保留。押金與最後一期租金請自行結算。</p>
+  <form method="post" class="stack" onsubmit="return confirm('確定解除 {{ tenant.name }} 的綁定？')">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
+    {% set open_pos = open_items | selectattr('state','equalto','unpaid') | selectattr('amount','gt',0) | list %}
+    {% if open_pos %}
+    <label for="unpaid_action">還有 {{ open_pos|length }} 筆未繳項目（共 {{ open_pos|sum(attribute='amount')|money }} 元），要怎麼處理？</label>
+    <select id="unpaid_action" name="unpaid_action">
+      <option value="deposit">已用押金扣抵，標記為結清</option>
+      <option value="cash">退租時已收現金，標記為結清</option>
+      <option value="keep">維持未繳，繼續追收</option>
+    </select>
+    {% endif %}
     <button class="btn danger">解除綁定（退租）</button>
   </form>
 </div>

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, rent_art %}
+{% block title %}回報金額有誤｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_home') }}">← 我的房間</a>
+{{ banner('回報金額有誤', room.name, rent_art(), 'warm') }}
+<div class="panel" style="margin-top:0">
+  <div class="readonly"><span>{{ item.label }}</span><span class="big">{{ item.amount|money }}</span></div>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="note">哪裡不對？</label>
+    <input id="note" name="note" maxlength="200" required autofocus
+           value="{{ form.get('note','') if form }}" placeholder="例：電費應該是 480，不是 580">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <button class="btn primary block">送出並通知房東</button>
+  </form>
+</div>
+<p class="muted small" style="margin-top:12px">送出後房東會收到通知並確認，金額修改前請先不要繳這一筆。</p>
+{% endblock %}

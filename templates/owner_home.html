@@ -30,6 +30,10 @@
   發送{{ month_label(period) }}繳費單{% if unbilled %}（{{ unbilled }} 間尚未發送）{% endif %}
 </a>
 
+{% if is_admin and renew_days is not none and renew_days >= 25 %}
+<div class="flash warn">網站已經 {{ renew_days }} 天沒有延長，請登入 PythonAnywhere 按「Run until 1 month from today」。
+  <a href="https://www.pythonanywhere.com/user/cym1013/webapps/" target="_blank" rel="noopener">前往延長</a></div>
+{% endif %}
 {% if login_locked %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
   <span>密碼錯誤次數太多，房客登入已暫停。已登入的房客不受影響。</span>
@@ -143,6 +147,27 @@
 <div class="panel">
   <p style="margin:0">台電公告電價：每度 <strong>{{ rate }}</strong> 元</p>
   <p class="muted small" style="margin:4px 0 0">在「發送繳費單」頁面修改，會同步顯示在房客的電費上。</p>
+  <div style="margin-top:14px">
+    <label for="exp_year">匯出資料（CSV，可用 Excel 開啟）</label>
+    <div class="confirm-form">
+      <select id="exp_year" style="width:110px">
+        {% for y in years %}<option value="{{ y }}">{{ y }} 年</option>{% endfor %}
+      </select>
+      <a class="btn small" id="exp1" href="{{ url_for('owner_export', kind='items') }}">繳費單明細</a>
+      <a class="btn small" id="exp2" href="{{ url_for('owner_export', kind='payments') }}">付款紀錄</a>
+    </div>
+    <script>
+    (function(){
+      var y = document.getElementById('exp_year');
+      function sync(){
+        document.getElementById('exp1').href = "{{ url_for('owner_export', kind='items') }}?year=" + y.value;
+        document.getElementById('exp2').href = "{{ url_for('owner_export', kind='payments') }}?year=" + y.value;
+      }
+      y.addEventListener('change', sync); sync();
+    })();
+    </script>
+  </div>
+
   <details class="plain" style="margin-top:14px">
     <summary>房客入口網址與 QR code</summary>
     <div class="qr-box">{{ qr }}</div>
