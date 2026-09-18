@@ -56,6 +56,19 @@ def _messages(texts):
     return [{"type": "text", "text": t[:4900]} for t in texts][:5]
 
 
+def group_summary(gid):
+    """取得群組名稱；失敗時回傳空字串。"""
+    if not token():
+        return ""
+    req = urllib.request.Request(f"{API}/group/{gid}/summary",
+                                 headers={"Authorization": f"Bearer {token()}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode()).get("groupName", "")
+    except Exception:
+        return ""
+
+
 def push(to, texts):
     return _post("/message/push", {"to": to, "messages": _messages(texts)})
 

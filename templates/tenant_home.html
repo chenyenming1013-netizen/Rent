@@ -17,8 +17,8 @@
 <h2>{{ month_label(period) }}繳費單</h2>
 {% macro item_row(i, carry=False) -%}
 <div class="bill-row">
-  <span class="bill-ic {{ i.kind }}">{{ icon('cash' if i.kind == 'rent' else 'bolt', 20) }}</span>
-  <span class="bill-name">{% if carry or i.kind == 'diff' %}{{ i.label }}{% else %}本月{{ '月租' if i.kind == 'rent' else '電費' }}{% if i.kind == 'elec' and i.month != period %}<span class="muted small">（{{ i.label }}）</span>{% endif %}{% endif %}
+  <span class="bill-ic {{ i.kind }}">{{ icon('bolt' if i.kind == 'elec' else 'cash', 20) }}</span>
+  <span class="bill-name">{% if carry or i.kind in ('diff','other') %}{{ i.label }}{% else %}本月{{ '月租' if i.kind == 'rent' else '電費' }}{% if i.kind == 'elec' and i.month != period %}<span class="muted small">（{{ i.label }}）</span>{% endif %}{% endif %}
     {% if i.kind == 'elec' and i.kwh %}<span class="small" style="display:block">用電 {{ i.kwh }} 度 × 每度 {{ '%g'|format(i.rate or 0) }} 元</span>{% endif %}
     {% if i.kind == 'elec' and i.rate is not none %}<span class="muted small" style="display:block">台電公告電價：每度 {{ '%g'|format(i.rate) }} 元</span>{% endif %}
     {% if i.note %}<span class="muted small" style="display:block">{{ i.note }}</span>{% endif %}

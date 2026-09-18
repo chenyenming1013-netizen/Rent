@@ -17,24 +17,53 @@
   <div class="readonly" style="word-break:break-all"><span>{{ callback_url }}</span></div>
 </div>
 
-<h2>綁定 LINE</h2>
+<h2>公告群組（{{ groups|length }} 個）</h2>
 <div class="panel">
-  <p class="muted small" style="margin-top:0">按下按鈕產生六位數綁定碼，{{ minutes }} 分鐘內有效、只能用一次。房東與管理者請先加入 {{ LINE_BASIC_ID }} 好友，再於一對一聊天室傳送指令；公告群組則由你在群組裡傳。<br><strong>房客不需要綁定</strong>，繳費通知一律發在公告群組。</p>
-  {% for kind, label, cmd in [('landlord','房東','房東'),('admin','管理者（你自己）','管理者'),('group','公告群組','設定公告群組')] %}
+  <p class="muted small" style="margin-top:0">把「租屋收費小弟」邀進任何群組，就會自動列入公告名單；已經在的群組，只要有人在群組說一句話也會自動加入。房東一鍵發送繳費單時，名單上的群組都會收到通知（不含房號與金額）。</p>
+  {% for g in groups %}
   <div class="list-item list-head">
-    <span><strong>{{ label }}</strong>
-      {% if kind == 'group' %}<span class="st {{ 'st-ok' if group_set else 'st-none' }}" style="font-size:12px">{{ '已設定' if group_set else '未設定' }}</span>{% endif %}
-      {% if codes.get(kind) %}<br><span class="small">請傳送：</span><code class="bindcode">{{ cmd }} {{ codes[kind] }}</code>
-        {% if kind == 'group' %}<br><span class="muted small">先把官方帳號邀進群組，再由你在群組裡傳這行。</span>{% endif %}{% endif %}
+    <span><strong>{{ g.name or '群組' }}</strong><span class="muted small">・{{ g.at[:10] }} 加入</span></span>
+    <span style="display:flex;gap:8px">
+      <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test_group">
+        <input type="hidden" name="gid" value="{{ g.id }}"><button class="btn link small">測試</button></form>
+      <form method="post" onsubmit="return confirm('不要再通知這個群組？')"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="clear_group"><input type="hidden" name="gid" value="{{ g.id }}">
+        <button class="btn link small">移除</button></form>
     </span>
-    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="code_{{ kind }}">
-      <button class="btn small">產生綁定碼</button></form>
   </div>
-  {% endfor %}
+  {% else %}<p class="muted" style="margin:0">還沒有群組。把官方帳號邀進住戶群組即可。</p>{% endfor %}
+  {% if groups %}
+  <form method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="test_group"><button class="btn small">全部群組發一則測試</button></form>
+  {% endif %}
+</div>
+
+<h2>綁定房東與管理者的 LINE</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">兩種方式擇一，都要先加 {{ LINE_BASIC_ID }} 好友。<strong>房客不需要綁定。</strong></p>
+  <div class="list-item">
+    <strong>方式一：一鍵綁定（推薦）</strong>
+    <p class="muted small" style="margin:4px 0 8px">按下按鈕後 {{ minutes }} 分鐘內，第一個私訊租屋小幫手的人就會成為該身分，對方隨便傳一句話即可。</p>
+    <div class="btn-row">
+      <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="open_landlord">
+        <button class="btn small primary">開始綁定房東</button></form>
+      <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="open_admin">
+        <button class="btn small">開始綁定管理者（你自己）</button></form>
+    </div>
+  </div>
+  <div class="list-item">
+    <strong>方式二：綁定碼</strong>
+    <p class="muted small" style="margin:4px 0 8px">產生六位數碼，請對方在一對一聊天室傳送指定的那一行，{{ minutes }} 分鐘內有效。</p>
+    {% for kind, label, cmd in [('landlord','房東','房東'),('admin','管理者（你自己）','管理者')] %}
+    <div class="list-head" style="padding:6px 0">
+      <span>{{ label }}{% if codes.get(kind) %}<br><span class="small">請傳送：</span><code class="bindcode">{{ cmd }} {{ codes[kind] }}</code>{% endif %}</span>
+      <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="code_{{ kind }}">
+        <button class="btn small">產生綁定碼</button></form>
+    </div>
+    {% endfor %}
+  </div>
   <div class="btn-row">
-    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test_group"><button class="btn small" {% if not group_set %}disabled{% endif %}>測試群組通知</button></form>
     <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="test_me"><button class="btn small">傳測試訊息給我</button></form>
-    {% if group_set %}<form method="post" onsubmit="return confirm('清除公告群組設定？')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="clear_group"><button class="btn small danger">清除群組設定</button></form>{% endif %}
   </div>
 </div>
 

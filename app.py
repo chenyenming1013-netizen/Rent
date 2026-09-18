@@ -264,6 +264,8 @@ class BillItem(db.Model):
     @property
     def label(self):
         m = int(self.month[5:])
+        if self.kind == "other":
+            return self.note or f"{m}月其他費用"
         if self.kind == "diff":
             return f"{m}月差額" if self.amount > 0 else f"{m}月溢繳折抵"
         return f"{m}月{'月租' if self.kind == 'rent' else '電費'}"
@@ -631,11 +633,40 @@ def notify_tenant(tenant, text, kind):
         notify(u.user_id, text, kind)
 
 
+def line_groups():
+    try:
+        groups = json.loads(get_setting("line_groups", "[]") or "[]")
+    except ValueError:
+        groups = []
+    old = get_setting("line_group_id")          # 舊版單一群組，自動轉過來
+    if old and not any(g["id"] == old for g in groups):
+        groups.append({"id": old, "name": "", "at": tw_now().isoformat()})
+        set_setting("line_groups", json.dumps(groups, ensure_ascii=False))
+        set_setting("line_group_id", "")
+        db.session.commit()
+    return groups
+
+
+def save_groups(groups):
+    set_setting("line_groups", json.dumps(groups, ensure_ascii=False))
+    db.session.commit()
+
+
+def register_group(gid):
+    """把群組加入公告清單；回傳 (是否新加入, 目前總數)。"""
+    groups = line_groups()
+    if any(g["id"] == gid for g in groups):
+        return False, len(groups)
+    groups.append({"id": gid, "name": line_api.group_summary(gid), "at": tw_now().isoformat()})
+    save_groups(groups)
+    return True, len(groups)
+
+
 def notify_group(text, kind):
-    gid = get_setting("line_group_id")
-    if gid:
-        return notify(gid, text, kind)
-    return False
+    ok = False
+    for g in line_groups():
+        ok = notify(g["id"], text, kind) or ok
+    return ok
 
 
 # ================================================================ 入口
@@ -1134,14 +1165,16 @@ def owner_bills():
         sent, skipped = [], []
         for r in rooms:
             t = r.tenant
-            if f.get(f"rent_{r.id}") is None and f.get(f"elec_{r.id}") is None:
+            if all(f.get(f"{k}_{r.id}") is None for k in ("rent", "elec", "other")):
                 continue  # 本月已繳清的房間不在表單裡
             rent = max(to_int(f.get(f"rent_{r.id}"), 0), 0)
+            other = max(to_int(f.get(f"other_{r.id}"), 0), 0)
+            other_name = f.get(f"othername_{r.id}", "").strip()[:60]
             kwh = max(to_int(f.get(f"kwh_{r.id}"), 0), 0)
             elec = max(to_int(f.get(f"elec_{r.id}"), 0), 0)
             if not elec and kwh:
                 elec = round(kwh * rate)
-            if not rent and not elec:
+            if not rent and not elec and not other:
                 continue
             bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
             if not bill:
@@ -1150,7 +1183,8 @@ def owner_bills():
                 db.session.flush()
             for kind, month, amount, note in [
                     ("rent", period, rent, ""),
-                    ("elec", elec_month, elec, f.get(f"note_{r.id}", "").strip()[:60])]:
+                    ("elec", elec_month, elec, f.get(f"note_{r.id}", "").strip()[:60]),
+                    ("other", period, other, other_name)]:
                 extra = {"kwh": kwh or None, "rate": rate} if kind == "elec" else {}
                 item = BillItem.query.filter_by(tenant_id=t.id, kind=kind, month=month).first()
                 if item and item.state != "unpaid":
@@ -1190,10 +1224,11 @@ def owner_bills():
         bill = Bill.query.filter_by(tenant_id=t.id, period=period).first()
         rent_item = BillItem.query.filter_by(tenant_id=t.id, kind="rent", month=period).first()
         elec_item = BillItem.query.filter_by(tenant_id=t.id, kind="elec", month=elec_month).first()
+        other_item = BillItem.query.filter_by(tenant_id=t.id, kind="other", month=period).first()
         open_ = [i for i in unpaid_items(t) if i.state == "unpaid"]
         done = bool(bill) and not open_ and all(i.paid for i in bill.items)
         rows.append({"room": r, "tenant": t, "bill": bill, "done": done,
-                     "rent_item": rent_item, "elec_item": elec_item,
+                     "rent_item": rent_item, "elec_item": elec_item, "other_item": other_item,
                      "carry": [i for i in unpaid_items(t)
                                if i.month < period and not (i.kind == "elec" and i.month == elec_month)]})
     grouped = {}
@@ -1616,15 +1651,19 @@ def handle_line_event(ev):
         db.session.commit()
         return
     if etype == "join" and stype in ("group", "room"):
-        if not get_setting("line_group_id"):
-            reply("大家好，我是租屋小幫手。\n請管理者在這裡傳：設定公告群組 六位數設定碼")
+        added, n = register_group(src.get("groupId") or src.get("roomId"))
+        if added:
+            reply("大家好，我是租屋小幫手。\n以後繳費單發出時，會在這裡通知大家。")
+            alert_admin(f"租屋小幫手被加入一個群組，已列入公告名單（目前 {n} 個）。"
+                        "如果不想讓這個群組收到公告，請到系統設定移除。")
         return
     if etype == "leave" and stype in ("group", "room"):
         gid = src.get("groupId") or src.get("roomId")
-        if gid == get_setting("line_group_id"):
-            set_setting("line_group_id", "")
-            db.session.commit()
-            alert_admin("租屋小幫手已被移出公告群組，群組通知暫停。")
+        groups = line_groups()
+        left = [g for g in groups if g["id"] != gid]
+        if len(left) != len(groups):
+            save_groups(left)
+            alert_admin("租屋小幫手已被移出一個群組，該群組不再收到公告。")
         return
     if etype != "message" or ev.get("message", {}).get("type") != "text":
         return
@@ -1635,13 +1674,9 @@ def handle_line_event(ev):
 
     if stype in ("group", "room"):
         gid = src.get("groupId") or src.get("roomId")
+        register_group(gid)      # 之前就加入的群組，只要有人說話就自動列入公告名單
         if cmd == "設定公告群組":
-            if use_bind_code("group", arg):
-                set_setting("line_group_id", gid)
-                db.session.commit()
-                reply("已設定為公告群組，之後繳費單發出時會在這裡通知大家。")
-            else:
-                reply("設定碼不正確或已過期，請管理者重新產生。")
+            reply(f"這個群組已經在公告名單內（目前共 {len(line_groups())} 個群組）。")
         elif cmd == "綁定":
             reply("房客不需要綁定，通知都會發在這個群組。\n"
                   "提醒：房間密碼請勿傳到群組，若已傳出請聯絡房東更換。")
@@ -1656,6 +1691,25 @@ def handle_line_event(ev):
               f"查看繳費單、繳費：{site_url('tenant_login')}\n\n"
               "提醒：請不要把房間密碼傳給任何人。")
         return
+    try:
+        open_info = json.loads(get_setting("open_bind", "") or "{}")
+    except ValueError:
+        open_info = {}
+    if open_info:
+        if tw_now() < datetime.fromisoformat(open_info["until"]):
+            role = open_info["role"]
+            set_setting("open_bind", "")
+            LineUser.query.filter_by(user_id=uid).delete()
+            db.session.add(LineUser(user_id=uid, role=role))
+            db.session.commit()
+            reply(f"已綁定為{ROLE_LABEL[role]}。" + ("房客付款時會通知你，每天早上也會收到待辦摘要。"
+                                                  if role == "landlord" else "系統異常時會通知你。"))
+            if role != "admin":
+                alert_admin(f"有人用一鍵綁定成為{ROLE_LABEL[role]}。若不是預期的人，請到系統設定解除。")
+            return
+        set_setting("open_bind", "")
+        db.session.commit()
+
     if cmd in ("房東", "管理者"):
         kind = "landlord" if cmd == "房東" else "admin"
         key = f"line:{uid}"
@@ -1823,11 +1877,20 @@ def owner_admin():
             db.session.commit()
             flash("已解除該 LINE 綁定。", "ok")
         elif action == "clear_group":
-            set_setting("line_group_id", "")
+            gid = f.get("gid", "")
+            save_groups([g for g in line_groups() if g["id"] != gid])
+            flash("已從公告名單移除該群組（Bot 仍留在群組裡，如要退出請在 LINE 群組移除它）。", "ok")
+        elif action in ("open_landlord", "open_admin"):
+            role = "landlord" if action == "open_landlord" else "admin"
+            set_setting("open_bind", json.dumps(
+                {"role": role, "until": (tw_now() + timedelta(minutes=BIND_CODE_MINUTES)).isoformat()}))
             db.session.commit()
-            flash("已清除公告群組設定。", "ok")
+            flash(f"已開啟一鍵綁定：{BIND_CODE_MINUTES} 分鐘內第一個私訊租屋小幫手的人，"
+                  f"就會成為{ROLE_LABEL[role]}。", "ok")
         elif action == "test_group":
-            ok = notify_group("【租屋小幫手】這是測試訊息，群組通知運作正常。", "test")
+            gid = f.get("gid", "")
+            ok = (notify(gid, "【租屋小幫手】這是測試訊息，群組通知運作正常。", "test") if gid
+                  else notify_group("【租屋小幫手】這是測試訊息，群組通知運作正常。", "test"))
             flash("已送出測試訊息。" if ok else "測試訊息送出失敗，請看下方推播紀錄。", "ok" if ok else "warn")
         elif action == "test_me":
             users = LineUser.query.filter_by(role="admin").all()
@@ -1845,7 +1908,7 @@ def owner_admin():
     cron_stale = not cron_last or (tw_today() - date.fromisoformat(cron_last)).days > 1
     return render_template(
         "owner_admin.html", codes=codes, users=users, notices=notices,
-        line_on=line_api.enabled(), group_set=bool(get_setting("line_group_id")),
+        line_on=line_api.enabled(), groups=line_groups(),
         landlord_set=bool(get_setting("landlord_pw_hash")),
         contact=get_setting("landlord_contact", ""),
         callback_url=site_url("line_callback"),

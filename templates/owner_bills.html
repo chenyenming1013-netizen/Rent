@@ -23,7 +23,7 @@
     <p class="muted small" style="margin:6px 0 0">電費帳單晚到時選上個月，就會以「{{ month_label(months[1]) }}電費」加進這期繳費單。</p>
   </div>
 
-  <p class="muted small">月租已自動帶入。填「用電度數」會自動算出電費，也可以直接改電費金額。<strong>月租和電費都空白的房間不會收到通知</strong>。</p>
+  <p class="muted small">月租已自動帶入。填「用電度數」會自動算出電費，也可以直接改電費金額。日租或雜費請用「其他費用」，自己填名稱和金額。<strong>三個欄位都空白的房間不會收到通知</strong>。</p>
 
   {% for building, rows_ in grouped %}
   {% set c = rows_[0].room.color %}
@@ -53,6 +53,17 @@
       {% endif %}
     </div>
     <input name="note_{{ r.id }}" maxlength="60" placeholder="電費備註（選填），例：1527→1640" value="{{ ei.note if ei else '' }}" style="margin-top:8px">
+    {% set oi = row.other_item %}
+    {% if oi and oi.state != 'unpaid' %}
+    <div class="readonly" style="margin-top:8px"><span>{{ oi.label }} {{ oi.amount|money }}</span><span class="pill {{ 'ok' if oi.state == 'paid' else 'wait' }}">{{ '已繳清' if oi.state == 'paid' else '待確認' }}</span></div>
+    {% else %}
+    <div class="row2" style="margin-top:8px">
+      <div><label for="othername_{{ r.id }}">其他費用名稱</label>
+        <input id="othername_{{ r.id }}" name="othername_{{ r.id }}" maxlength="60" value="{{ oi.note if oi else '' }}" placeholder="例：9/1-9/3 日租、管理費"></div>
+      <div><label for="other_{{ r.id }}">金額</label>
+        <input id="other_{{ r.id }}" name="other_{{ r.id }}" type="number" min="0" inputmode="numeric" value="{{ oi.amount if oi else '' }}" placeholder="不收留空"></div>
+    </div>
+    {% endif %}
     {% if (ri and ri.issue) or (ei and ei.issue) %}
     <div class="flash warn" style="margin:8px 0 0">
       <strong>房客回報金額有誤：</strong>
