@@ -41,20 +41,6 @@
   <div class="carry-head">之前尚未繳清</div>
   {% for i in older %}{{ item_row(i, True) }}{% endfor %}
   {% endif %}
-  {% if payable_total > 0 and (pay_account.account or pay_account.qr) %}
-  <details class="plain" style="margin-top:12px">
-    <summary>繳費帳號</summary>
-    <div class="pay-acct">
-      {% if pay_account.bank %}<p style="margin:6px 0 0">{{ pay_account.bank }}</p>{% endif %}
-      {% if pay_account.account %}
-      <p class="acct-no">{{ pay_account.account }}</p>
-      <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ pay_account.account }}').then(()=>this.textContent='已複製帳號')">複製帳號</button>
-      {% endif %}
-      {% if pay_account.qr %}<img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="繳費 QR code">{% endif %}
-      {% if pay_account.note %}<p class="muted small">{{ pay_account.note }}</p>{% endif %}
-    </div>
-  </details>
-  {% endif %}
   {% if payable_total > 0 %}
   <div class="bill-total"><span>尚未繳納合計</span><strong>{{ payable_total|money }} 元</strong></div>
   <p class="muted small" style="margin:4px 0 0">請於 {{ due.month }}/{{ due.day }} 前繳納。</p>
@@ -63,6 +49,19 @@
   <div class="bill-total"><span>本期狀態</span><strong>{{ '已通知房東，等待確認' if (this_items + older)|selectattr('state','equalto','pending')|list else '全部已繳清' }}</strong></div>
   {% endif %}
 </div>
+
+{% if pay_account.account or pay_account.qr %}
+<h2>繳費帳號</h2>
+<div class="panel pay-acct">
+  {% if pay_account.bank %}<p style="margin:0">{{ pay_account.bank }}</p>{% endif %}
+  {% if pay_account.account %}
+  <p class="acct-no">{{ pay_account.account }}</p>
+  <button type="button" class="btn small" onclick="navigator.clipboard.writeText('{{ pay_account.account }}').then(()=>this.textContent='已複製帳號')">複製帳號</button>
+  {% endif %}
+  {% if pay_account.qr %}<img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="繳費 QR code">{% endif %}
+  {% if pay_account.note %}<p class="muted small" style="margin:6px 0 0">{{ pay_account.note }}</p>{% endif %}
+</div>
+{% endif %}
 
 <h2>基本資料</h2>
 <div class="panel">
