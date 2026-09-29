@@ -554,12 +554,21 @@ def inject():
 CSRF_EXEMPT = {"line_callback"}
 
 
+def safe_back():
+    """回到剛才那一頁；referrer 不是本站時回首頁。"""
+    ref = request.referrer or ""
+    return ref if ref.startswith(request.host_url) else url_for("index")
+
+
 @app.before_request
 def check_csrf():
     if request.method == "POST" and request.endpoint not in CSRF_EXEMPT:
         token = request.form.get("csrf", "")
         if not hmac.compare_digest(token, session.get("csrf", "")):
-            abort(400, "表單已過期，請重新整理頁面")
+            session.permanent = True
+            session["csrf"] = session.get("csrf") or secrets.token_hex(16)
+            flash("這個頁面開太久了，剛才的動作沒有送出。頁面已經更新，請再按一次。", "warn")
+            return redirect(safe_back())
 
 
 def read_payment_fields(f, errors):
