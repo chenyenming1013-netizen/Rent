@@ -543,6 +543,7 @@ def money(v):
 @app.context_processor
 def inject():
     if "csrf" not in session:
+        session.permanent = True
         session["csrf"] = secrets.token_hex(16)
     return {"csrf": session["csrf"], "today": tw_today(),
             "PAY_METHODS": PAY_METHODS, "month_label": month_label,

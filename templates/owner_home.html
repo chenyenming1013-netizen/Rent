@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% from "_art.html" import mini_hero %}
-{% from "_confirm.html" import confirm_form, confirm_script %}
-{% block title %}租屋總覽｜租屋小幫手{{ confirm_script() }}
-{% endblock %}
+{% from "_confirm.html" import confirm_form, confirm_script with context %}
+{% block title %}租屋總覽｜租屋小幫手{% endblock %}
 {% block content %}
 <div class="topbar">
   <span class="muted small">租屋小幫手・{{ '管理者' if is_admin else '房東' }}</span>

@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% from "_art.html" import banner, house %}
-{% from "_confirm.html" import confirm_form, confirm_script %}
-{% block title %}{{ room.name }}｜租屋小幫手{{ confirm_script() }}
-{% endblock %}
+{% from "_confirm.html" import confirm_form, confirm_script with context %}
+{% block title %}{{ room.name }}｜租屋小幫手{% endblock %}
 {% block content %}
 <a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
 {% call banner(room.name, ('房客：' ~ tenant.name ~ ('（已核對）' if tenant.verified else '（尚未核對）')) if tenant else ('空房' if room.active else '已停用'), house(room.color), room.color[2]) %}
