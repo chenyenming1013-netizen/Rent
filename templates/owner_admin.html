@@ -141,6 +141,18 @@
   </div>
 </div>
 
+<h2>每月群組提醒</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">每個月指定的那一天，系統會自動在所有公告群組發一則「繳費單已發出」的提醒（不含房號與金額），每月只發一次。填 0 表示不發。需要下方的每日排程已設定才會運作。</p>
+  <form method="post" class="confirm-form" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="announce_day">
+    <label for="day">每月</label>
+    <input id="day" name="day" type="number" min="0" max="28" value="{{ announce_day }}" style="width:80px">
+    <span>號發送</span>
+    <button class="btn small">儲存</button>
+  </form>
+</div>
+
 <h2>每日檢查排程</h2>
 <div class="panel">
   {% if cron_url %}

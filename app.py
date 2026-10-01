@@ -1796,6 +1796,16 @@ def daily_job(today):
         elif 0 <= days <= 3:
             soon.append(room.name)
 
+    # 每月指定日期，在所有群組發一次繳費提醒
+    announce_day = to_int(get_setting("announce_day", "5"), 5)
+    mark = f"monthly_announce_{period}"
+    if announce_day and today.day >= announce_day and not get_setting(mark) and line_groups():
+        if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
+                        f"{site_url('tenant_login')}\n"
+                        "若您已完成繳費，請忽略此通知", "monthly_group"):
+            set_setting(mark, "1")
+            db.session.commit()
+
     renewed = get_setting("pa_renewed_at")
     if renewed:
         days = (today - date.fromisoformat(renewed)).days
@@ -1860,6 +1870,11 @@ def owner_admin():
                 set_setting("landlord_ver", str(int(get_setting("landlord_ver", "0")) + 1))
                 db.session.commit()
                 flash("已設定房東密碼，房東已登入的裝置需要重新登入。", "ok")
+        elif action == "announce_day":
+            d = to_int(f.get("day"), 5)
+            set_setting("announce_day", str(d if 0 <= d <= 28 else 5))
+            db.session.commit()
+            flash("已更新每月群組提醒的日期。" if d else "已關閉每月群組提醒。", "ok")
         elif action == "contact":
             set_setting("landlord_contact", f.get("contact", "").strip()[:80])
             db.session.commit()
@@ -1934,7 +1949,8 @@ def owner_admin():
         callback_url=site_url("line_callback"),
         cron_url=(site_url("cron_daily") + "?key=" + CRON_KEY) if CRON_KEY else "",
         cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES,
-        renewed=get_setting("pa_renewed_at"), pay=pay_account())
+        renewed=get_setting("pa_renewed_at"), pay=pay_account(),
+        announce_day=to_int(get_setting("announce_day", "5"), 5))
 
 
 if __name__ == "__main__":
