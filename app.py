@@ -515,6 +515,11 @@ def prev_month(period):
 PAY_QR_PATH = os.path.join(app.root_path, "static", "uploads", "pay_qr.png")
 
 
+def announce_note():
+    note = get_setting("announce_note", "匯款請匯到富邦帳號")
+    return ("\n" + note) if note else ""
+
+
 def pay_account():
     return {"bank": get_setting("pay_bank", ""), "account": get_setting("pay_account", ""),
             "note": get_setting("pay_note", ""), "qr": os.path.exists(PAY_QR_PATH)}
@@ -1227,7 +1232,8 @@ def owner_bills():
             flash(f"已發送繳費單給 {len(sent)} 間：{'、'.join(sent)}。", "ok")
             if request.form.get("announce", "1") == "1":
                 if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
-                                f"{site_url('tenant_login')}\n"
+                                f"{site_url('tenant_login')}"
+                                f"{announce_note()}\n"
                                 "若您已完成繳費，請忽略此通知", "bill_group"):
                     flash("已在公告群組發出通知。", "ok")
                 elif line_api.enabled() and not get_setting("line_group_id"):
@@ -1801,7 +1807,8 @@ def daily_job(today):
     mark = f"monthly_announce_{period}"
     if announce_day and today.day >= announce_day and not get_setting(mark) and line_groups():
         if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
-                        f"{site_url('tenant_login')}\n"
+                        f"{site_url('tenant_login')}"
+                        f"{announce_note()}\n"
                         "若您已完成繳費，請忽略此通知", "monthly_group"):
             set_setting(mark, "1")
             db.session.commit()
@@ -1870,6 +1877,10 @@ def owner_admin():
                 set_setting("landlord_ver", str(int(get_setting("landlord_ver", "0")) + 1))
                 db.session.commit()
                 flash("已設定房東密碼，房東已登入的裝置需要重新登入。", "ok")
+        elif action == "announce_note":
+            set_setting("announce_note", f.get("note", "").strip()[:100])
+            db.session.commit()
+            flash("已更新公告附註。", "ok")
         elif action == "announce_day":
             d = to_int(f.get("day"), 5)
             set_setting("announce_day", str(d if 0 <= d <= 28 else 5))
@@ -1950,7 +1961,8 @@ def owner_admin():
         cron_url=(site_url("cron_daily") + "?key=" + CRON_KEY) if CRON_KEY else "",
         cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES,
         renewed=get_setting("pa_renewed_at"), pay=pay_account(),
-        announce_day=to_int(get_setting("announce_day", "5"), 5))
+        announce_day=to_int(get_setting("announce_day", "5"), 5),
+        announce_note=get_setting("announce_note", "匯款請匯到富邦帳號"))
 
 
 if __name__ == "__main__":
