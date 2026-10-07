@@ -72,15 +72,22 @@
     <div><dt>入住日期</dt><dd>{{ tenant.checkin.strftime('%Y/%m/%d') }}</dd></div>
     <div><dt>繳租日</dt><dd>每月 {{ tenant.due_day }} 號</dd></div>
     <div><dt>電話</dt><dd>{{ tenant.phone or '—' }}</dd></div>
+    <div><dt>租屋補助</dt><dd>{{ {'是':'有申請','否':'沒有申請'}.get(tenant.subsidy, '未填寫') }}</dd></div>
   </dl>
   <details class="plain" style="margin-top:16px">
-    <summary>修改姓名或電話</summary>
+    <summary>修改姓名、電話或租屋補助</summary>
     <form method="post" action="{{ url_for('tenant_profile') }}" class="stack">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="row2">
         <div><label for="name">姓名</label><input id="name" name="name" value="{{ tenant.name }}" required></div>
         <div><label for="phone">電話（選填）</label><input id="phone" name="phone" inputmode="tel" value="{{ tenant.phone }}" placeholder="可留空"></div>
       </div>
+      <label for="subsidy">是否申請租屋補助</label>
+      <select id="subsidy" name="subsidy">
+        <option value="" {% if not tenant.subsidy %}selected{% endif %}>未填寫</option>
+        <option value="是" {% if tenant.subsidy == '是' %}selected{% endif %}>是，有申請（或打算申請）</option>
+        <option value="否" {% if tenant.subsidy == '否' %}selected{% endif %}>否，沒有申請</option>
+      </select>
       <p class="muted small" style="margin:8px 0 0">電話留空也沒關係，系統不會用它發送訊息。</p>
       <button class="btn block">儲存</button>
     </form>

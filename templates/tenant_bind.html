@@ -11,6 +11,13 @@
   <label for="phone">電話（選填，可不填）</label>
   <input id="phone" name="phone" inputmode="tel" value="{{ form.get('phone','') }}" placeholder="不想留可以空白">
   <p class="muted small" style="margin:4px 0 0">系統不會用電話發送任何訊息，只是房東聯絡用。不填也能正常使用。</p>
+  <label for="subsidy">是否申請租屋補助</label>
+  <select id="subsidy" name="subsidy" required>
+    <option value="" {% if not form.get('subsidy') %}selected{% endif %} disabled>請選擇</option>
+    <option value="是" {% if form.get('subsidy') == '是' %}selected{% endif %}>是，有申請（或打算申請）</option>
+    <option value="否" {% if form.get('subsidy') == '否' %}selected{% endif %}>否，沒有申請</option>
+  </select>
+  <p class="muted small" style="margin:4px 0 0">只是讓房東備註，之後可以自己修改。</p>
   <label for="checkin">入住日期</label>
   <input id="checkin" name="checkin" type="date" value="{{ form.get('checkin','') }}" required>
   <div class="calc">

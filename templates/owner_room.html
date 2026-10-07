@@ -69,6 +69,12 @@
     <div><label for="name">房客姓名</label><input id="name" name="name" value="{{ tenant.name }}"></div>
     <div><label for="phone">電話（選填）</label><input id="phone" name="phone" value="{{ tenant.phone }}"></div>
   </div>
+  <label for="subsidy">是否申請租屋補助</label>
+  <select id="subsidy" name="subsidy">
+    <option value="" {% if not tenant.subsidy %}selected{% endif %}>未填寫</option>
+    <option value="是" {% if tenant.subsidy == '是' %}selected{% endif %}>是</option>
+    <option value="否" {% if tenant.subsidy == '否' %}selected{% endif %}>否</option>
+  </select>
   {% endif %}
   <p class="muted small" style="margin:10px 0 0">押金 {{ room.deposit|money }}</p>
   {% if is_admin %}<button class="btn primary block">儲存</button>{% else %}<p class="muted small">基本資料由管理者修改。</p>{% endif %}

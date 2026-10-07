@@ -91,6 +91,7 @@ input:focus,select:focus{border-color:var(--indigo)}
 .pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 9px;border-radius:99px;white-space:nowrap}
 .pill.ok{background:var(--teal-bg);color:var(--teal)}
 .pill.wait{background:var(--amber-bg);color:var(--amber)}
+.pill.subsidy{background:var(--indigo-bg);color:var(--indigo)}
 .pill.late{background:var(--red-bg);color:var(--red)}
 .pill.todo{background:var(--indigo-bg);color:var(--indigo)}
 .pill.empty{background:var(--bg);color:var(--soft)}

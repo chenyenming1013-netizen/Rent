@@ -137,6 +137,7 @@ class Tenant(db.Model):
     pin_ver = db.Column(db.Integer, default=1)         # 換密碼時加一，讓舊登入失效
     verified = db.Column(db.Boolean, default=False)    # 房東是否已核對
     pay_day = db.Column(db.Integer)                    # 房東指定的繳租日（1~28），空白＝依入住日
+    subsidy = db.Column(db.String(4), default="")      # 是否申請租屋補助：是／否／空白＝未填
 
     @property
     def due_day(self):
@@ -147,6 +148,11 @@ class Tenant(db.Model):
     def due_date(self, period):
         y, m = map(int, period.split("-"))
         return date(y, m, self.due_day)
+
+
+def subsidy_value(form):
+    v = form.get("subsidy", "").strip()
+    return v if v in ("是", "否") else ""
 
 
 class Payment(db.Model):
@@ -379,6 +385,9 @@ def migrate():
     if "pay_day" not in tenant_cols:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE tenant ADD COLUMN pay_day INTEGER"))
+    if "subsidy" not in tenant_cols:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE tenant ADD COLUMN subsidy VARCHAR(4) DEFAULT ''"))
 
     if inspect(db.engine).has_table("line_user"):
         lu_cols = {c["name"] for c in inspect(db.engine).get_columns("line_user")}
@@ -806,10 +815,13 @@ def tenant_bind():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         checkin = to_date(request.form.get("checkin"))
+        subsidy = subsidy_value(request.form)
         if not name or not checkin:
             error = "請填寫姓名和入住日期。"
+        elif not subsidy:
+            error = "請選擇是否申請租屋補助。"
         else:
-            tenant = Tenant(room_id=room.id, name=name, checkin=checkin,
+            tenant = Tenant(room_id=room.id, name=name, checkin=checkin, subsidy=subsidy,
                             phone=request.form.get("phone", "").strip())
             db.session.add(tenant)
             db.session.commit()
@@ -853,6 +865,8 @@ def tenant_profile():
     if name:
         tenant.name = name
     tenant.phone = request.form.get("phone", "").strip()
+    if "subsidy" in request.form:
+        tenant.subsidy = subsidy_value(request.form)
     db.session.commit()
     flash("個人資料已儲存。", "ok")
     return redirect(url_for("tenant_home"))
@@ -1404,6 +1418,8 @@ def owner_room(rid):
             if tenant:
                 tenant.name = f.get("name", tenant.name).strip() or tenant.name
                 tenant.phone = f.get("phone", "").strip()
+                if "subsidy" in f:
+                    tenant.subsidy = subsidy_value(f)
                 tenant.checkin = to_date(f.get("checkin")) or tenant.checkin
                 pd = to_int(f.get("pay_day"), 0)
                 tenant.pay_day = pd if 1 <= pd <= 28 else None
@@ -1597,6 +1613,20 @@ def owner_export(kind):
         rows.append([])
         rows.append(["已繳清合計", "", "", "", "", "", "", total])
         return _csv_response(rows, f"繳費單明細_{year}.csv")
+
+    if kind == "tenants":
+        rows = [["物件", "房間", "房型", "房客", "電話", "入住日期", "退租日期", "狀態",
+                 "月租", "押金", "租屋補助"]]
+        q = (Tenant.query.join(Room, Tenant.room_id == Room.id)
+             .order_by(Tenant.active.desc(), Room.sort, Room.id, Tenant.checkin).all())
+        for t in q:
+            r = db.session.get(Room, t.room_id)
+            rows.append([r.building, r.name, r.room_type, t.name, t.phone or "",
+                         t.checkin.strftime("%Y/%m/%d"),
+                         t.moved_out_at.strftime("%Y/%m/%d") if t.moved_out_at else "",
+                         "住戶" if t.active else "已退租", r.rent, r.deposit,
+                         t.subsidy or "未填"])
+        return _csv_response(rows, "房客名冊.csv")
 
     if kind == "payments":
         rows = [["付款日期", "期別", "物件", "房間", "房客", "付款方式", "末五碼／付款人",

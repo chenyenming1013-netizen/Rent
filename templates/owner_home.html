@@ -88,7 +88,7 @@
   <div class="room-card" style="background:{{ c[0] }}2E;border-color:{{ c[0] }}">
     <div class="rc-top">
       <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span>
-        {% if t %}<span class="tenant-name">{{ t.name }}{% if not t.verified %} <span class="pill wait">新</span>{% endif %}</span>
+        {% if t %}<span class="tenant-name">{{ t.name }}{% if not t.verified %} <span class="pill wait">新</span>{% endif %}{% if t.subsidy == '是' %} <span class="pill subsidy">租補</span>{% endif %}</span>
         {% else %}<span class="tenant-name muted">未登記</span>{% endif %}</span>
     </div>
     <div class="st st-{{ s[1] }} st-block">
@@ -180,6 +180,7 @@
       </select>
       <a class="btn small" id="exp1" href="{{ url_for('owner_export', kind='items') }}">繳費單明細</a>
       <a class="btn small" id="exp2" href="{{ url_for('owner_export', kind='payments') }}">付款紀錄</a>
+      <a class="btn small" href="{{ url_for('owner_export', kind='tenants') }}">房客名冊</a>
     </div>
     <script>
     (function(){
