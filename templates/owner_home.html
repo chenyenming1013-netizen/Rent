@@ -100,7 +100,8 @@
       <div><dt>房客密碼</dt><dd style="letter-spacing:.12em">{% if r.custom_code %}<span class="small">自訂</span>{% else %}{{ r.code }}{% endif %}</dd></div>
     </dl>
     <div class="rc-btns">
-      {% if s[2] %}<a class="btn small primary" href="#pay{{ s[2] }}">確認收款</a>{% endif %}
+      {% if s[2] %}<a class="btn small primary" href="#pay{{ s[2] }}">確認收款</a>
+      {% elif t and s[1] in ('due','late') %}<a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}#for-tenant">幫房客確認</a>{% endif %}
       <a class="btn small" href="{{ url_for('owner_room', rid=r.id) }}">{{ '管理' if is_admin else '查看' }}</a>
     </div>
   </div>

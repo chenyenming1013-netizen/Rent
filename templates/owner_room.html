@@ -101,12 +101,75 @@
   <p style="margin:12px 0 0"><a href="{{ url_for('owner_bills') }}">到「發送繳費單」新增或修改金額</a></p>
 </div>
 
+{% set can_pay = open_items | selectattr('state','equalto','unpaid') | selectattr('amount','gt',0) | list %}
+{% if can_pay %}
+{% set credits = open_items | selectattr('state','equalto','unpaid') | selectattr('amount','lt',0) | list %}
+<h2 id="for-tenant">幫房客確認收款</h2>
+<div class="panel">
+  <p class="muted small" style="margin-top:0">房客已經付錢、但沒有按「繳費並通知房東」時使用。確認後房客頁面會顯示「本月帳單屋主已主動確認」。</p>
+  <form method="post" action="{{ url_for('owner_confirm_for_tenant', rid=room.id) }}" class="stack" id="ft-form"
+        onsubmit="return confirm('確定房客已經繳款，要直接確認收款？')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="small">已經收到的項目</span>
+    {% for i in can_pay %}
+    <label class="radio"><input type="checkbox" name="item" value="{{ i.id }}" data-amt="{{ i.amount }}" checked> {{ i.label }} {{ i.amount|money }} 元</label>
+    {% endfor %}
+    {% for i in credits %}
+    <p class="muted small" style="margin:0">{{ i.label }} {{ i.amount|money }} 元（折抵，會一起結算）</p>
+    {% endfor %}
+    <div class="row2">
+      <div><label for="ft-method">付款方式</label>
+        <select id="ft-method" name="method">{% for m in PAY_METHODS %}<option>{{ m }}</option>{% endfor %}</select></div>
+      <div><label for="ft-date">收款日期</label>
+        <input id="ft-date" name="paid_date" type="date" value="{{ today.isoformat() }}"></div>
+    </div>
+    <div class="row2">
+      <div><label for="ft-rcv">實收金額</label><input id="ft-rcv" name="received" type="number" inputmode="numeric"></div>
+      <div><label for="ft-last5">末五碼（選填）</label><input id="ft-last5" name="last5" inputmode="numeric" maxlength="5"></div>
+    </div>
+    <p class="small" style="margin:8px 0 0">應收 <strong id="ft-due"></strong> 元</p>
+    <div class="diff-box" id="ft-less" hidden>
+      <div class="small"><strong class="warn-text">少收 <span data-amt></span> 元</strong>，要怎麼處理？</div>
+      <label class="radio"><input type="radio" name="diff_choice" value="carry"> 差額轉到下期（房客繳費單會出現）</label>
+      <label class="radio"><input type="radio" name="diff_choice" value="waive"> 視為繳清，不再追收</label>
+    </div>
+    <div class="diff-box" id="ft-more" hidden>
+      <div class="small"><strong class="ok-text">多收 <span data-amt></span> 元</strong>，要怎麼處理？</div>
+      <label class="radio"><input type="radio" name="diff_choice" value="credit"> 折抵下期</label>
+      <label class="radio"><input type="radio" name="diff_choice" value="ignore"> 不處理</label>
+    </div>
+    <input name="note" placeholder="備註（可空白）" aria-label="備註">
+    <button class="btn primary block">幫房客確認收款</button>
+  </form>
+</div>
+<script>
+(function(){
+  var f = document.getElementById('ft-form'), rcv = document.getElementById('ft-rcv');
+  var credit = {{ credits|sum(attribute='amount') }}, touched = false;
+  function due(){ var s = 0; f.querySelectorAll('[name=item]:checked').forEach(function(c){ s += +c.dataset.amt; }); return s ? s + credit : 0; }
+  function sync(){
+    var d = due(); document.getElementById('ft-due').textContent = d.toLocaleString('zh-TW');
+    if (!touched) rcv.value = d;
+    var diff = (+rcv.value || 0) - d;
+    [['ft-less', diff < 0], ['ft-more', diff > 0]].forEach(function(x){
+      var box = document.getElementById(x[0]); box.hidden = !x[1];
+      box.querySelectorAll('input').forEach(function(r){ r.required = x[1]; if (!x[1]) r.checked = false; });
+      box.querySelector('[data-amt]').textContent = Math.abs(diff).toLocaleString('zh-TW');
+    });
+  }
+  f.querySelectorAll('[name=item]').forEach(function(c){ c.addEventListener('change', sync); });
+  rcv.addEventListener('input', function(){ touched = true; sync(); });
+  sync();
+})();
+</script>
+{% endif %}
+
 <h2>付款紀錄</h2>
 <div class="panel">
   {% for p in history %}
   <div class="list-item">
     <div class="list-head"><strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
-      <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ p.status }}</span></div>
+      <span>{% if p.by_owner %}<span class="pill subsidy">屋主主動確認</span> {% endif %}<span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ p.status }}</span></span></div>
     <div class="muted small">{{ p.detail }}・回報 {{ p.total|money }}{% if p.received is not none %}・實收 {{ p.received|money }}{% endif %}・{{ p.pay_info }}{% if p.confirm_note %}・{{ p.confirm_note }}{% endif %}</div>
     {% if not p.confirmed %}
     {{ confirm_form(p, 'room') }}
@@ -115,6 +178,13 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="action" value="delete"><input type="hidden" name="back" value="room">
       <button class="btn link small">刪除這筆回報</button>
+    </form>
+    {% elif p.by_owner %}
+    <form method="post" action="{{ url_for('owner_pay', pid=p.id) }}" style="margin-top:6px"
+          onsubmit="return confirm('取消這筆屋主主動確認？項目會恢復為未繳。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="undo"><input type="hidden" name="back" value="room">
+      <button class="btn link small">取消確認</button>
     </form>
     {% endif %}
   </div>

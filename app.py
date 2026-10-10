@@ -178,6 +178,7 @@ class Payment(db.Model):
     received = db.Column(db.Integer)
     confirm_note = db.Column(db.String(200), default="")
     confirmed_at = db.Column(db.DateTime)
+    by_owner = db.Column(db.Boolean, default=False)      # 房客沒通知，由屋主主動確認
     created_at = db.Column(db.DateTime, default=tw_now)
     updated_at = db.Column(db.DateTime, default=tw_now, onupdate=tw_now)
 
@@ -424,6 +425,10 @@ def migrate():
     elif "payer" not in pay_cols:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE payment ADD COLUMN payer VARCHAR(40) DEFAULT ''"))
+    pay_cols = {c["name"] for c in inspect(db.engine).get_columns("payment")}
+    if "by_owner" not in pay_cols:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE payment ADD COLUMN by_owner BOOLEAN DEFAULT 0"))
 
 
 def init_db():
@@ -850,7 +855,10 @@ def tenant_home():
         payable = []
     history = (Payment.query.filter_by(tenant_id=tenant.id)
                .order_by(Payment.created_at.desc()).limit(36).all())
+    owner_confirmed = any(i.state == "paid" and i.payment and i.payment.by_owner
+                          for i in this_items)
     return render_template("tenant_home.html", room=room, tenant=tenant, period=period,
+                           owner_confirmed=owner_confirmed,
                            bill=bill, this_items=this_items, older=older,
                            payable_total=sum(i.amount for i in payable),
                            due=tenant.due_date(period), history=history)
@@ -1510,6 +1518,87 @@ def _add_diff_item(p, amount):
                             if p.paid_date else ""))
 
 
+DIFF_CHOICES = ("carry", "waive", "credit", "ignore")
+
+
+def _apply_confirm(p, received, note, choice):
+    """把一筆付款標記為已確認，並依選擇處理差額。"""
+    diff = received - p.due
+    p.received = received
+    p.confirm_note = note
+    p.status = "已確認"
+    p.confirmed_at = tw_now()
+    for i in p.items:
+        i.paid, i.paid_at = True, p.confirmed_at
+    msg = f"{p.room.name} {p.kind_label} 已確認收款 {received:,} 元。"
+    if diff < 0 and choice == "carry":
+        _add_diff_item(p, -diff)
+        msg += f" 少收的 {-diff:,} 元已轉到下期。"
+    elif diff < 0 and choice == "waive":
+        p.confirm_note = (p.confirm_note + f"｜免收差額 {-diff:,}").strip("｜")
+        msg += f" 少收的 {-diff:,} 元不再追收。"
+    elif diff > 0 and choice == "credit":
+        _add_diff_item(p, -diff)
+        msg += f" 多收的 {diff:,} 元會折抵下期。"
+    elif diff > 0:
+        p.confirm_note = (p.confirm_note + f"｜多收 {diff:,} 不處理").strip("｜")
+    db.session.commit()
+    flash(msg, "ok")
+    if diff < 0 and choice == "carry":
+        flash("請提醒房客到繳費單查看差額。", "warn")
+
+
+@app.route("/owner/room/<int:rid>/confirm-for-tenant", methods=["POST"])
+def owner_confirm_for_tenant(rid):
+    """房客沒有按「繳費並通知房東」，但房東已經在帳戶看到錢：由屋主直接確認。"""
+    if (g := owner_guard()):
+        return g
+    room = db.get_or_404(Room, rid)
+    tenant = room.tenant
+    back = url_for("owner_room", rid=rid) + "#for-tenant"
+    if not tenant:
+        flash("這間房目前沒有房客。", "warn")
+        return redirect(back)
+    f = request.form
+    payable = [i for i in unpaid_items(tenant) if i.state == "unpaid"]
+    ids = {to_int(x) for x in f.getlist("item")}
+    chosen = [i for i in payable if i.id in ids and i.amount > 0]
+    if chosen:  # 溢繳折抵一律一起結算
+        chosen += [i for i in payable if i.amount < 0]
+    if not chosen:
+        flash("請勾選房客已經繳的項目。", "warn")
+        return redirect(back)
+    due = sum(i.amount for i in chosen)
+    received = to_int(f.get("received"), due)
+    method = f.get("method", "匯款／轉帳")
+    if method not in PAY_METHODS:
+        method = "匯款／轉帳"
+    last5 = f.get("last5", "").strip()
+    if not (last5.isdigit() and len(last5) == 5) or method != "匯款／轉帳":
+        last5 = ""
+    choice = f.get("diff_choice", "")
+    if received <= 0:
+        flash("請填實收金額。", "warn")
+        return redirect(back)
+    if received != due and choice not in DIFF_CHOICES:
+        flash("實收金額和應付金額不同，請選擇差額的處理方式。", "warn")
+        return redirect(back)
+    rent = sum(i.amount for i in chosen if i.kind == "rent")
+    elec = sum(i.amount for i in chosen if i.kind == "elec")
+    pay = Payment(tenant_id=tenant.id, room_id=room.id, period=this_period(),
+                  kind="b" + secrets.token_hex(3), rent_amount=rent, elec_amount=elec,
+                  other_amount=due - rent - elec, total=received, method=method,
+                  last5=last5, paid_date=to_date(f.get("paid_date")) or tw_today(),
+                  status="待確認", by_owner=True)
+    db.session.add(pay)
+    db.session.flush()
+    for i in chosen:
+        i.payment_id = pay.id
+    note = f.get("note", "").strip()
+    _apply_confirm(pay, received, ("屋主主動確認｜" + note if note else "屋主主動確認")[:200], choice)
+    return redirect(url_for("owner_room", rid=rid))
+
+
 @app.route("/owner/pay/<int:pid>", methods=["POST"])
 def owner_pay(pid):
     if (g := owner_guard()):
@@ -1522,34 +1611,12 @@ def owner_pay(pid):
             flash("這筆款項已經確認過了。", "warn")
         else:
             received = to_int(request.form.get("received"), p.total)
-            diff = received - p.due
             choice = request.form.get("diff_choice", "")
-            if diff and p.is_bill and choice not in ("carry", "waive", "credit", "ignore"):
+            if received - p.due and p.is_bill and choice not in DIFF_CHOICES:
                 flash("實收金額和應付金額不同，請選擇差額的處理方式。", "warn")
                 return redirect(url_for("owner_room", rid=p.room_id) if back == "room"
                                 else url_for("owner_home") + f"#pay{p.id}")
-            p.received = received
-            p.confirm_note = request.form.get("note", "").strip()
-            p.status = "已確認"
-            p.confirmed_at = tw_now()
-            for i in p.items:
-                i.paid, i.paid_at = True, p.confirmed_at
-            msg = f"{p.room.name} {p.kind_label} 已確認收款 {received:,} 元。"
-            if diff < 0 and choice == "carry":
-                _add_diff_item(p, -diff)
-                msg += f" 少收的 {-diff:,} 元已轉到下期。"
-            elif diff < 0 and choice == "waive":
-                p.confirm_note = (p.confirm_note + f"｜免收差額 {-diff:,}").strip("｜")
-                msg += f" 少收的 {-diff:,} 元不再追收。"
-            elif diff > 0 and choice == "credit":
-                _add_diff_item(p, -diff)
-                msg += f" 多收的 {diff:,} 元會折抵下期。"
-            elif diff > 0:
-                p.confirm_note = (p.confirm_note + f"｜多收 {diff:,} 不處理").strip("｜")
-            db.session.commit()
-            flash(msg, "ok")
-            if diff < 0 and choice == "carry":
-                flash("請提醒房客到繳費單查看差額。", "warn")
+            _apply_confirm(p, received, request.form.get("note", "").strip(), choice)
     elif action == "delete":
         if p.confirmed:
             flash("已確認的款項不能刪除，請先取消確認。", "warn")
@@ -1569,6 +1636,14 @@ def owner_pay(pid):
         else:
             for d in derived:
                 db.session.delete(d)
+            if p.by_owner:  # 房客沒通知過，取消後直接移除，項目恢復未繳
+                for i in p.items:
+                    i.paid, i.paid_at, i.payment_id = False, None, None
+                room_id, name = p.room_id, p.room.name
+                db.session.delete(p)
+                db.session.commit()
+                flash(f"{name} 的屋主主動確認已取消，項目恢復為未繳。", "warn")
+                return redirect(url_for("owner_room", rid=room_id) if back == "room" else url_for("owner_home"))
             p.status = "待確認"
             for i in p.items:
                 i.paid, i.paid_at = False, None

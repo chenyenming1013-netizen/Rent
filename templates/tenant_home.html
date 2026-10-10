@@ -31,6 +31,9 @@
   <span class="bill-st">{% if i.state == 'paid' %}<span class="pill ok">房東已確認</span>{% elif i.state == 'pending' %}<span class="pill wait">已通知房東</span>{% elif i.amount < 0 %}<span class="pill ok">下期折抵</span>{% else %}<span class="pill late">未繳</span>{% endif %}</span>
 </div>
 {%- endmacro %}
+{% if owner_confirmed %}
+<div class="owner-ok" role="status">✓ {{ month_label(period) }}帳單屋主已主動確認</div>
+{% endif %}
 <div class="panel bill">
   {% if this_items %}
     {% for i in this_items %}{{ item_row(i) }}{% endfor %}
@@ -101,7 +104,7 @@
   <div class="list-item">
     <div class="list-head">
       <strong>{{ p.period }}<span class="type">{{ p.kind_label }}</span></strong>
-      <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ '房東已確認' if p.confirmed else '房東待確認' }}</span>
+      <span class="pill {{ 'ok' if p.confirmed else 'wait' }}">{{ ('屋主已主動確認' if p.by_owner else '房東已確認') if p.confirmed else '房東待確認' }}</span>
     </div>
     <div class="muted small">{{ p.detail }}・共付 {{ p.total|money }}・{{ p.method }}・{{ p.paid_date.strftime('%m/%d') if p.paid_date }}</div>
   </div>
