@@ -10,8 +10,17 @@
   <input id="code" name="code" class="code-input" type="password" inputmode="numeric"
          pattern="\d{4}" maxlength="4" autocomplete="one-time-code" required autofocus>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if want_line %}
+  <button class="btn line block" name="next" value="line">進入並連結 LINE</button>
+  {% else %}
   <button class="btn primary block">進入我的房間</button>
+  <button class="btn line block" name="next" value="line" style="margin-top:10px">進入並連結 LINE</button>
+  {% endif %}
 </form>
+</div>
+<div class="panel line-intro">
+  <strong>連結 LINE，帳單直接傳給你</strong>
+  <p class="small" style="margin:6px 0 0">連結後，「租屋小幫手」會用 LINE 傳你自己的帳單金額和收款確認，不用每次打開網頁查。只要做一次。</p>
 </div>
 <p class="muted small" style="margin-top:12px">登入後這支手機會記住你，下次會直接進入。忘記密碼請聯絡房東。</p>
 {% endblock %}

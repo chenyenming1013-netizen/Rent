@@ -101,33 +101,11 @@
   </form>
 </div>
 
-<h2>繳費帳號（顯示在房客的繳費畫面）</h2>
+<h2>繳費帳號</h2>
 <div class="panel">
-  <form method="post" class="stack">
-    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_account">
-    <label for="bank">銀行與分行</label>
-    <input id="bank" name="bank" maxlength="60" value="{{ pay.bank }}" placeholder="例：台北富邦｜忠孝分行">
-    <label for="account">帳號</label>
-    <input id="account" name="account" maxlength="40" value="{{ pay.account }}" placeholder="例：012-0000305168611159">
-    <label for="paynote">備註（選填）</label>
-    <input id="paynote" name="note" maxlength="100" value="{{ pay.note }}" placeholder="例：轉帳後請填末五碼">
-    <button class="btn block">儲存繳費帳號</button>
-  </form>
-  <form method="post" enctype="multipart/form-data" class="stack" style="margin-top:14px">
-    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr">
-    <label for="qr">繳費 QR code 圖片（PNG 或 JPG，3MB 以內）</label>
-    <input id="qr" name="qr" type="file" accept="image/png,image/jpeg" required>
-    <button class="btn block">上傳 QR code</button>
-  </form>
-  {% if pay.qr %}
-  <div style="margin-top:12px">
-    <img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="目前的繳費 QR code">
-    <form method="post" onsubmit="return confirm('刪除 QR code？')">
-      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr_del">
-      <button class="btn link small">刪除 QR code</button>
-    </form>
-  </div>
-  {% endif %}
+  <p style="margin:0">{{ pay.bank }} {{ pay.account or '尚未填寫' }}</p>
+  <p class="muted small" style="margin:4px 0 8px">房東和管理者都可以修改，公告和 LINE 帳單會自動帶入。</p>
+  <a class="btn small" href="{{ url_for('owner_pay_account') }}">修改繳費帳號</a>
 </div>
 
 <h2>PythonAnywhere 網站延長</h2>
@@ -144,12 +122,7 @@
 <h2>每月群組提醒</h2>
 <div class="panel">
   <p class="muted small" style="margin-top:0">每個月指定的那一天，系統會自動在所有公告群組發一則「繳費單已發出」的提醒（不含房號與金額），每月只發一次。填 0 表示不發。需要下方的每日排程已設定才會運作。</p>
-  <form method="post" class="stack" style="margin:0 0 14px">
-    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="announce_note">
-    <label for="note">公告附註（會加在每則群組公告裡，留空就不加）</label>
-    <input id="note" name="note" maxlength="100" value="{{ announce_note }}" placeholder="例：匯款請匯到富邦帳號">
-    <button class="btn block">儲存附註</button>
-  </form>
+  <p class="small" style="margin:0 0 14px">公告裡的匯款帳號和附註在 <a href="{{ url_for('owner_pay_account') }}">繳費帳號</a> 頁修改。</p>
   <form method="post" class="confirm-form" style="margin:0">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="announce_day">
     <label for="day">每月</label>

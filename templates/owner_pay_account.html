@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_art.html" import mini_hero %}
+{% block title %}繳費帳號｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('owner_home') }}">← 租屋總覽</a>
+{{ mini_hero('繳費帳號', '公告、個人帳單與房客頁面都會顯示') }}
+
+<div class="panel" style="margin-top:0">
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_account">
+    <label for="bank">銀行與分行</label>
+    <input id="bank" name="bank" maxlength="60" value="{{ pay.bank }}" placeholder="例：台北富邦｜忠孝分行">
+    <label for="account">帳號</label>
+    <input id="account" name="account" maxlength="40" value="{{ pay.account }}" placeholder="例：012-0000305168611159">
+    <label for="paynote">房客頁面備註（選填）</label>
+    <input id="paynote" name="note" maxlength="100" value="{{ pay.note }}" placeholder="例：轉帳後請填末五碼">
+    <label for="anote">公告附註（選填，加在群組公告和 LINE 帳單裡）</label>
+    <input id="anote" name="announce_note" maxlength="100" value="{{ announce_note }}" placeholder="例：請於期限內繳納，謝謝">
+    <button class="btn primary block">儲存</button>
+  </form>
+</div>
+
+<h2>公告預覽</h2>
+<div class="panel">
+  <pre class="preview">{{ preview }}</pre>
+  <p class="muted small" style="margin:8px 0 0">帳號留空的話，公告就不會出現匯款帳號。改完按「儲存」後預覽會更新。</p>
+</div>
+
+<h2>繳費 QR code（選填）</h2>
+<div class="panel">
+  <form method="post" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr">
+    <label for="qr">圖片（PNG 或 JPG，3MB 以內），會顯示在房客頁面</label>
+    <input id="qr" name="qr" type="file" accept="image/png,image/jpeg" required>
+    <button class="btn block">上傳 QR code</button>
+  </form>
+  {% if pay.qr %}
+  <div style="margin-top:12px">
+    <img class="pay-qr" src="{{ url_for('static', filename='uploads/pay_qr.png') }}" alt="目前的繳費 QR code">
+    <form method="post" onsubmit="return confirm('刪除 QR code？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="pay_qr_del">
+      <button class="btn link small">刪除 QR code</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

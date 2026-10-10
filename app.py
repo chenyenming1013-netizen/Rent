@@ -138,6 +138,9 @@ class Tenant(db.Model):
     verified = db.Column(db.Boolean, default=False)    # 房東是否已核對
     pay_day = db.Column(db.Integer)                    # 房東指定的繳租日（1~28），空白＝依入住日
     subsidy = db.Column(db.String(4), default="")      # 是否申請租屋補助：是／否／空白＝未填
+    moveout_req = db.Column(db.Date)                   # 房客申請的退租日期（房東確認前）
+    moveout_req_at = db.Column(db.DateTime)
+    moveout_req_note = db.Column(db.String(200), default="")
 
     @property
     def due_day(self):
@@ -293,7 +296,15 @@ class LineUser(db.Model):
     name = db.Column(db.String(60), default="")          # LINE 顯示名稱
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenant.id"))
     created_at = db.Column(db.DateTime, default=tw_now)
+    blocked = db.Column(db.Boolean, default=False)      # 房客封鎖或刪除好友；加回來會自動恢復
     tenant = db.relationship("Tenant")
+
+
+class LineLinkCode(db.Model):
+    """房客在網頁按「連結 LINE」時產生的一次性連結碼。"""
+    code = db.Column(db.String(8), primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenant.id"), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
 
 
 class Notice(db.Model):
@@ -389,12 +400,20 @@ def migrate():
     if "subsidy" not in tenant_cols:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE tenant ADD COLUMN subsidy VARCHAR(4) DEFAULT ''"))
+    with db.engine.begin() as conn:
+        for col, ddl in (("moveout_req", "DATE"), ("moveout_req_at", "DATETIME"),
+                         ("moveout_req_note", "VARCHAR(200) DEFAULT ''")):
+            if col not in tenant_cols:
+                conn.execute(text(f"ALTER TABLE tenant ADD COLUMN {col} {ddl}"))
 
     if inspect(db.engine).has_table("line_user"):
         lu_cols = {c["name"] for c in inspect(db.engine).get_columns("line_user")}
         if "name" not in lu_cols:
             with db.engine.begin() as conn:
                 conn.execute(text("ALTER TABLE line_user ADD COLUMN name VARCHAR(60)"))
+        if "blocked" not in lu_cols:
+            with db.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE line_user ADD COLUMN blocked BOOLEAN DEFAULT 0"))
 
     item_cols = {c["name"] for c in inspect(db.engine).get_columns("bill_item")}
     with db.engine.begin() as conn:
@@ -530,8 +549,20 @@ PAY_QR_PATH = os.path.join(app.root_path, "static", "uploads", "pay_qr.png")
 
 
 def announce_note():
-    note = get_setting("announce_note", "匯款請匯到富邦帳號")
+    note = get_setting("announce_note", "")
     return ("\n" + note) if note else ""
+
+
+def pay_text():
+    """公告與帳單裡的匯款資訊（屋主在「繳費帳號」頁填寫）；開頭帶換行，沒填就是空字串。"""
+    acct = pay_account()
+    lines = []
+    if acct["account"]:
+        lines.append("匯款帳號：" + "　".join(x for x in (acct["bank"], acct["account"]) if x))
+    note = get_setting("announce_note", "")
+    if note:
+        lines.append(note)
+    return "".join("\n" + x for x in lines)
 
 
 def pay_account():
@@ -665,8 +696,73 @@ def notify_landlords(text, kind):
 
 
 def notify_tenant(tenant, text, kind):
-    for u in LineUser.query.filter_by(role="tenant", tenant_id=tenant.id).all():
-        notify(u.user_id, text, kind)
+    """傳給房客已連結、沒封鎖的 LINE；回傳成功傳出的數量。"""
+    n = 0
+    for u in LineUser.query.filter_by(role="tenant", tenant_id=tenant.id, blocked=False).all():
+        n += bool(notify(u.user_id, text, kind))
+    return n
+
+
+def line_state(tenant):
+    """'on' 已連結、'blocked' 已封鎖、'' 未連結。"""
+    links = line_links(tenant)
+    if any(not u.blocked for u in links):
+        return "on"
+    return "blocked" if links else ""
+
+
+TENANT_FOOTER = "金額有問題請私訊房東。\n（此為系統自動通知，房東看不到這裡的回覆）"
+
+
+def tenant_bill_text(tenant, period, title=None):
+    """房客自己的帳單內容（未繳項目、合計、期限、帳號、連結）。沒有未繳時回傳 None。"""
+    room = db.session.get(Room, tenant.room_id)
+    items = [i for i in unpaid_items(tenant) if i.state == "unpaid" and i.amount]
+    if sum(i.amount for i in items) <= 0:
+        return None
+    lines = []
+    for i in items:
+        extra = ""
+        if i.kind == "elec" and i.kwh and i.rate:
+            extra = f"（{i.kwh} 度 × {i.rate:g} 元）"
+        if i.month < period and i.amount > 0:
+            extra += "（尚未繳清）"
+        lines.append(f"・{i.label} {i.amount:,} 元{extra}")
+    due = tenant.due_date(period)
+    pay = pay_text().strip()
+    return (f"{title or '【' + month_label(period) + '份繳費單】'}{room.name} {tenant.name}\n"
+            + "\n".join(lines)
+            + f"\n合計 {sum(i.amount for i in items):,} 元，請於 {due.month}/{due.day} 前繳納"
+            + (f"\n\n{pay}" if pay else "")
+            + f"\n\n查看與繳費：{site_url('tenant_login')}\n{TENANT_FOOTER}")
+
+
+def farewell_tenant(tenant):
+    room = db.session.get(Room, tenant.room_id)
+    notify_tenant(tenant, f"{room.name} 已辦理退租，租屋小幫手不會再傳送通知，謝謝您的入住。\n"
+                          "如不需要，可以自行刪除好友。", "tenant_farewell")
+
+
+LINK_MINUTES = 15
+LINK_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # 去掉容易看錯的 0 O 1 I
+
+
+def line_links(tenant):
+    return LineUser.query.filter_by(role="tenant", tenant_id=tenant.id).all() if tenant else []
+
+
+def new_link_code(tenant):
+    LineLinkCode.query.filter((LineLinkCode.tenant_id == tenant.id)
+                              | (LineLinkCode.expires_at < tw_now())).delete()
+    code = "".join(secrets.choice(LINK_ALPHABET) for _ in range(6))
+    db.session.add(LineLinkCode(code=code, tenant_id=tenant.id,
+                                expires_at=tw_now() + timedelta(minutes=LINK_MINUTES)))
+    db.session.commit()
+    return code
+
+
+def line_oa_id():
+    return urllib.parse.quote(LINE_BASIC_ID)
 
 
 def line_groups():
@@ -782,8 +878,9 @@ def tenant_or_login():
 
 @app.route("/tenant", methods=["GET", "POST"])
 def tenant_login():
+    want_line = (request.values.get("next") == "line")
     if tenant_required()[0]:
-        return redirect(url_for("tenant_home"))
+        return redirect(url_for("tenant_line" if want_line else "tenant_home"))
     error = None
     if request.method == "POST":
         error = login_blocked()
@@ -795,12 +892,13 @@ def tenant_login():
                 error = (f"密碼不對，還可以再試 {left} 次。" if left
                          else "錯誤太多次，請一小時後再試，或聯絡房東。")
             elif room.tenant:
-                return _login_tenant(room, room.tenant)
+                _login_tenant(room, room.tenant)
+                return redirect(url_for("tenant_line" if want_line else "tenant_home"))
             else:
                 session["bind"] = {"room_id": room.id, "code": code,
-                                   "at": tw_now().isoformat()}
+                                   "at": tw_now().isoformat(), "line": want_line}
                 return redirect(url_for("tenant_bind"))
-    return render_template("tenant_login.html", error=error)
+    return render_template("tenant_login.html", error=error, want_line=want_line)
 
 
 @app.route("/tenant/bind", methods=["GET", "POST"])
@@ -830,7 +928,9 @@ def tenant_bind():
                             phone=request.form.get("phone", "").strip())
             db.session.add(tenant)
             db.session.commit()
-            return _login_tenant(room, tenant, "綁定完成，下次打開網址會直接進入你的房間。")
+            want_line = bool(info.get("line"))
+            _login_tenant(room, tenant, "綁定完成，下次打開網址會直接進入你的房間。")
+            return redirect(url_for("tenant_line" if want_line else "tenant_home"))
     return render_template("tenant_bind.html", room=room, error=error, form=request.form)
 
 
@@ -839,6 +939,50 @@ def tenant_logout():
     for k in ("room_id", "tenant_id", "pin_ver", "bind"):
         session.pop(k, None)
     return redirect(url_for("tenant_login"))
+
+
+@app.route("/tenant/moveout", methods=["POST"])
+def tenant_moveout():
+    room, tenant, go = tenant_or_login()
+    if go:
+        return go
+    if request.form.get("action") == "cancel":
+        if tenant.moveout_req:
+            tenant.moveout_req = tenant.moveout_req_at = None
+            tenant.moveout_req_note = ""
+            db.session.commit()
+            notify_landlords(f"【退租申請取消】{room.name} {tenant.name} 取消了退租申請。", "moveout_req")
+            flash("已取消退租申請。", "ok")
+        return redirect(url_for("tenant_home"))
+    d = to_date(request.form.get("date"))
+    if not d or d < tw_today():
+        flash("請選擇今天以後的退租日期。", "warn")
+        return redirect(url_for("tenant_home") + "#moveout")
+    if d > tw_today() + timedelta(days=366):
+        flash("退租日期請選一年內。", "warn")
+        return redirect(url_for("tenant_home") + "#moveout")
+    tenant.moveout_req, tenant.moveout_req_at = d, tw_now()
+    tenant.moveout_req_note = request.form.get("note", "").strip()[:200]
+    db.session.commit()
+    notify_landlords(f"【退租申請】{room.name} {tenant.name}\n希望退租日期：{d.month}/{d.day}"
+                     + (f"\n備註：{tenant.moveout_req_note}" if tenant.moveout_req_note else "")
+                     + f"\n\n請到房間頁確認（結清押金與未繳項目）：{site_url('owner_room', rid=room.id)}",
+                     "moveout_req")
+    flash(f"已送出退租申請（{d.month}/{d.day}），房東確認後才會正式退租。", "ok")
+    return redirect(url_for("tenant_home"))
+
+
+@app.route("/tenant/line")
+def tenant_line():
+    room, tenant = tenant_required()
+    if not room:
+        return redirect(url_for("tenant_login", next="line"))
+    code = new_link_code(tenant)
+    msg = urllib.parse.quote(f"連結 {code}")
+    return render_template("tenant_line.html", room=room, tenant=tenant, code=code,
+                           minutes=LINK_MINUTES, links=line_links(tenant),
+                           send_url=f"https://line.me/R/oaMessage/{line_oa_id()}/?{msg}",
+                           friend_url=f"https://line.me/R/ti/p/{line_oa_id()}")
 
 
 @app.route("/tenant/home")
@@ -858,7 +1002,7 @@ def tenant_home():
     owner_confirmed = any(i.state == "paid" and i.payment and i.payment.by_owner
                           for i in this_items)
     return render_template("tenant_home.html", room=room, tenant=tenant, period=period,
-                           owner_confirmed=owner_confirmed,
+                           owner_confirmed=owner_confirmed, line_st=line_state(tenant),
                            bill=bill, this_items=this_items, older=older,
                            payable_total=sum(i.amount for i in payable),
                            due=tenant.due_date(period), history=history)
@@ -1176,7 +1320,13 @@ def owner_home():
     renew_days = (tw_today() - date.fromisoformat(renewed)).days if renewed else None
     years = sorted({b.period[:4] for b in Bill.query.all()} | {str(tw_today().year)}, reverse=True)
     entry = public_url(url_for("tenant_login"))
-    return render_template("owner_home.html", unbilled=unbilled, years=years,
+    linked = {}
+    for u in LineUser.query.filter_by(role="tenant").all():
+        linked[u.tenant_id] = "on" if not u.blocked or linked.get(u.tenant_id) == "on" else "blocked"
+    moveout_reqs = (Tenant.query.filter(Tenant.active.is_(True), Tenant.moveout_req.isnot(None))
+                    .order_by(Tenant.moveout_req).all())
+    return render_template("owner_home.html", unbilled=unbilled, years=years, linked=linked,
+                           moveout_reqs=moveout_reqs, room_of=lambda t: db.session.get(Room, t.room_id),
                            line_users=line_users, line_group_list=line_groups(),
                            line_on=line_api.enabled(),
                            renew_days=renew_days, renewed=renewed,
@@ -1209,7 +1359,7 @@ def owner_bills():
             flash("台電公告電價要填數字。", "warn")
             return redirect(url_for("owner_bills", elec_month=elec_month))
         set_setting("elec_rate", f"{rate:g}")
-        sent, skipped = [], []
+        sent, skipped, sent_tenants = [], [], []
         for r in rooms:
             t = r.tenant
             if all(f.get(f"{k}_{r.id}") is None for k in ("rent", "elec", "other")):
@@ -1249,13 +1399,34 @@ def owner_bills():
                     db.session.add(BillItem(bill_id=bill.id, tenant_id=t.id, kind=kind,
                                             month=month, amount=amount, note=note, **extra))
             sent.append(r.name)
+            sent_tenants.append(t)
         db.session.commit()
         if sent:
             flash(f"已發送繳費單給 {len(sent)} 間：{'、'.join(sent)}。", "ok")
+            if request.form.get("personal", "1") == "1" and line_api.enabled():
+                ok_rooms, no_link, blocked = [], [], []
+                for t in sent_tenants:
+                    rn = db.session.get(Room, t.room_id).name
+                    st = line_state(t)
+                    msg = tenant_bill_text(t, period)
+                    if not msg:
+                        continue
+                    if st == "on" and notify_tenant(t, msg, "tenant_bill"):
+                        ok_rooms.append(rn)
+                    elif st == "blocked":
+                        blocked.append(rn)
+                    else:
+                        no_link.append(rn)
+                if ok_rooms:
+                    flash(f"已用 LINE 傳個人帳單 {len(ok_rooms)} 位：{'、'.join(ok_rooms)}。", "ok")
+                if no_link:
+                    flash(f"未連結 LINE，請自行通知：{'、'.join(no_link)}。", "warn")
+                if blocked:
+                    flash(f"已封鎖租屋小幫手，收不到 LINE：{'、'.join(blocked)}。", "warn")
             if request.form.get("announce", "1") == "1":
                 if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
                                 f"{site_url('tenant_login')}"
-                                f"{announce_note()}\n"
+                                f"{pay_text()}\n"
                                 "若您已完成繳費，請忽略此通知", "bill_group"):
                     flash("已在公告群組發出通知。", "ok")
                 elif line_api.enabled() and not get_setting("line_group_id"):
@@ -1407,11 +1578,18 @@ def owner_room(rid):
     tenant = room.tenant
     errors = {}
     if request.method == "POST":
-        if (g := admin_guard()):
-            return g
         action = request.form.get("action")
+        landlord_ok = action in ("moveout", "reject_moveout") and tenant and tenant.moveout_req
+        if not landlord_ok and (g := admin_guard()):
+            return g
         f = request.form
-        if action == "save":
+        if action == "reject_moveout" and tenant:
+            tenant.moveout_req = tenant.moveout_req_at = None
+            tenant.moveout_req_note = ""
+            notify_tenant(tenant, f"【退租申請】{room.name} {tenant.name}\n"
+                                  f"房東已退回你的退租申請，有問題請私訊房東。", "tenant_moveout")
+            flash("已退回退租申請。", "ok")
+        elif action == "save":
             b = building_from_form(f, errors)
             rtype = f.get("room_type", room.room_type)
             if rtype not in room_types():
@@ -1432,6 +1610,10 @@ def owner_room(rid):
                 pd = to_int(f.get("pay_day"), 0)
                 tenant.pay_day = pd if 1 <= pd <= 28 else None
             flash("已儲存。", "ok")
+        elif action == "unlink_line" and tenant:
+            n = LineUser.query.filter_by(role="tenant", tenant_id=tenant.id,
+                                         user_id=f.get("uid", "")).delete()
+            flash("已解除這個 LINE 的連結。" if n else "找不到這個連結。", "ok" if n else "warn")
         elif action == "verify" and tenant:
             tenant.verified = True
             flash(f"已確認 {tenant.name} 是這間房的房客。", "ok")
@@ -1451,12 +1633,17 @@ def owner_room(rid):
                 flash(f"{len(unpaid)} 筆未繳項目已標記為「{label}」結清。", "ok")
             elif unpaid:
                 flash(f"{len(unpaid)} 筆未繳項目仍保留在系統中，會繼續顯示在總覽。", "warn")
+            farewell_tenant(tenant)          # 先傳告別訊息，再解除 LINE 連結
             tenant.active = False
             tenant.moved_out_at = tw_now()
             tenant.pin_ver = (tenant.pin_ver or 0) + 1
-            LineUser.query.filter_by(tenant_id=tenant.id).delete()
             room.set_owner_code(new_code(room.id))
             flash(f"已解除 {tenant.name} 的綁定，房間變回空房，繳費紀錄已保留。新房客請用密碼 {room.code}。", "ok")
+            tenant.moveout_req = tenant.moveout_req_at = None
+            n = LineUser.query.filter_by(role="tenant", tenant_id=tenant.id).delete()
+            LineLinkCode.query.filter_by(tenant_id=tenant.id).delete()
+            if n:
+                flash(f"已解除 {tenant.name} 的 LINE 連結，之後不會再收到通知。", "ok")
             left = Payment.query.filter_by(tenant_id=tenant.id, status="待確認").count()
             if left:
                 flash(f"{tenant.name} 還有 {left} 筆待確認的回報，仍會顯示在總覽，請確認收款或刪除。", "warn")
@@ -1500,7 +1687,7 @@ def owner_room(rid):
     return render_template("owner_room.html", room=room, tenant=tenant, history=history,
                            past=past, past_pending=past_pending, deletable=deletable,
                            open_items=open_items, buildings=buildings(),
-                           types=room_types(),
+                           types=room_types(), links=line_links(tenant),
                            status=room_status(room, this_period()) if room.active else None)
 
 
@@ -1546,6 +1733,16 @@ def _apply_confirm(p, received, note, choice):
     flash(msg, "ok")
     if diff < 0 and choice == "carry":
         flash("請提醒房客到繳費單查看差額。", "warn")
+    if p.tenant and p.tenant.active:
+        extra = ""
+        if diff < 0 and choice == "carry":
+            extra = f"\n少收的 {-diff:,} 元已轉到下期帳單。"
+        elif diff > 0 and choice == "credit":
+            extra = f"\n多付的 {diff:,} 元會折抵下期。"
+        who = "房東已主動確認收款" if p.by_owner else "房東已確認收款"
+        notify_tenant(p.tenant, f"【收款確認】{p.room.name} {p.tenant.name}\n"
+                                f"{who} {received:,} 元，謝謝。{extra}\n"
+                                f"（{p.detail}）\n\n{TENANT_FOOTER}", "tenant_confirm")
 
 
 @app.route("/owner/room/<int:rid>/confirm-for-tenant", methods=["POST"])
@@ -1721,6 +1918,47 @@ def owner_export(kind):
     abort(404)
 
 
+@app.route("/owner/pay-account", methods=["GET", "POST"])
+def owner_pay_account():
+    """繳費帳號與公告附註：房東和管理者都能修改。"""
+    if (g := owner_guard()):
+        return g
+    if request.method == "POST":
+        f = request.form
+        action = f.get("action")
+        if action == "pay_account":
+            set_setting("pay_bank", f.get("bank", "").strip()[:60])
+            set_setting("pay_account", f.get("account", "").strip()[:40])
+            set_setting("pay_note", f.get("note", "").strip()[:100])
+            set_setting("announce_note", f.get("announce_note", "").strip()[:100])
+            db.session.commit()
+            flash("已更新繳費帳號，之後的公告和帳單會用新的帳號。", "ok")
+        elif action == "pay_qr":
+            file = request.files.get("qr")
+            data = file.read(3 * 1024 * 1024 + 1) if file else b""
+            if not data:
+                flash("請選擇圖片檔。", "warn")
+            elif len(data) > 3 * 1024 * 1024:
+                flash("圖片請小於 3MB。", "warn")
+            elif not data[:8].startswith((b"\x89PNG", b"\xff\xd8")):
+                flash("只接受 PNG 或 JPG 圖片。", "warn")
+            else:
+                os.makedirs(os.path.dirname(PAY_QR_PATH), exist_ok=True)
+                with open(PAY_QR_PATH, "wb") as fh:
+                    fh.write(data)
+                flash("已更新繳費 QR code。", "ok")
+        elif action == "pay_qr_del":
+            if os.path.exists(PAY_QR_PATH):
+                os.remove(PAY_QR_PATH)
+            flash("已刪除繳費 QR code。", "ok")
+        return redirect(url_for("owner_pay_account"))
+    period = this_period()
+    preview = (f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
+               f"{site_url('tenant_login')}{pay_text()}\n若您已完成繳費，請忽略此通知")
+    return render_template("owner_pay_account.html", pay=pay_account(), preview=preview,
+                           announce_note=get_setting("announce_note", ""))
+
+
 @app.route("/owner/settings", methods=["POST"])
 def owner_settings():
     if (g := admin_guard()):
@@ -1760,9 +1998,10 @@ def use_bind_code(kind, code):
 
 def help_text():
     contact = get_setting("landlord_contact", "").strip()
-    return ("這是租屋小幫手的自動通知帳號，無法回覆訊息。\n\n"
+    return ("這是租屋小幫手的自動通知帳號，房東看不到這裡的訊息。\n"
+            "金額有問題請私訊房東。\n\n"
             f"查看繳費單、繳費：{site_url('tenant_login')}\n"
-            "繳費通知都會發在住戶群組，不需要另外綁定。\n\n"
+            "想用 LINE 收到自己的帳單：打開上面的網頁，按「連結 LINE」。\n\n"
             + (f"其他問題請聯絡房東：{contact}" if contact else "其他問題請直接聯絡房東。"))
 
 
@@ -1775,10 +2014,27 @@ def handle_line_event(ev):
     reply = (lambda t: line_api.reply(token_, t)) if token_ else (lambda t: None)
 
     if etype == "follow" and uid:
+        me = db.session.get(LineUser, uid)
+        if me and me.role == "tenant" and me.blocked:
+            me.blocked = False
+            db.session.commit()
+            t = me.tenant
+            room = db.session.get(Room, t.room_id) if t else None
+            reply(f"歡迎回來！已恢復 {room.name if room else ''} 的帳單通知。")
+            return
         reply("歡迎使用租屋小幫手！\n\n" + help_text())
         return
     if etype == "unfollow" and uid:
-        LineUser.query.filter_by(user_id=uid).delete()
+        me = db.session.get(LineUser, uid)
+        if me and me.role == "tenant":
+            me.blocked = True      # 保留連結，房客加回好友就自動恢復
+            t = me.tenant
+            if t and t.active:
+                db.session.commit()
+                notify_landlords(f"【LINE 封鎖】{db.session.get(Room, t.room_id).name} {t.name} "
+                                 "封鎖或刪除了租屋小幫手，之後收不到 LINE 帳單，請私下提醒。", "tenant_block")
+        elif me:
+            db.session.delete(me)
         db.session.commit()
         return
     if etype == "join" and stype in ("group", "room"):
@@ -1808,8 +2064,9 @@ def handle_line_event(ev):
         register_group(gid)      # 之前就加入的群組，只要有人說話就自動列入公告名單
         if cmd == "設定公告群組":
             reply(f"這個群組已經在公告名單內（目前共 {len(line_groups())} 個群組）。")
-        elif cmd == "綁定":
-            reply("房客不需要綁定，通知都會發在這個群組。\n"
+        elif cmd in ("綁定", "連結"):
+            reply("想用 LINE 收到自己的帳單，請打開租屋小幫手網頁，按「連結 LINE」。\n"
+                  f"{site_url('tenant_login')}\n"
                   "提醒：房間密碼請勿傳到群組，若已傳出請聯絡房東更換。")
         elif cmd in ("房東", "管理者"):
             reply("請私訊租屋小幫手完成綁定，不要在群組傳綁定碼。")
@@ -1817,9 +2074,57 @@ def handle_line_event(ev):
 
     if stype != "user" or not uid:
         return
-    if cmd == "綁定":
-        reply("房客不需要綁定，繳費通知都會發在住戶群組。\n\n"
-              f"查看繳費單、繳費：{site_url('tenant_login')}\n\n"
+    if cmd == "連結" and arg:
+        key = f"line:{uid}"
+        link = db.session.get(LineLinkCode, arg.upper())
+        if recent_fails(key, hours=1) >= IP_MAX_FAILS:
+            reply("錯誤太多次，請一小時後再試。")
+            return
+        if not link or link.expires_at < tw_now():
+            if link:
+                db.session.delete(link)
+            db.session.add(LoginFail(ip=key))
+            db.session.commit()
+            reply("連結碼不正確或已過期。\n請回到租屋小幫手網頁，重新按一次「連結 LINE」。")
+            return
+        tenant = db.session.get(Tenant, link.tenant_id)
+        db.session.delete(link)
+        me = db.session.get(LineUser, uid)
+        if not tenant or not tenant.active:
+            db.session.commit()
+            reply("這間房目前沒有房客，無法連結。")
+            return
+        if me and me.role in ("landlord", "admin"):
+            db.session.commit()
+            reply(f"這個 LINE 已經綁定為{ROLE_LABEL[me.role]}，不能再連結房客。請用房客自己的 LINE。")
+            return
+        name = line_api.profile(uid)
+        if me:
+            db.session.delete(me)
+            db.session.flush()
+        db.session.add(LineUser(user_id=uid, role="tenant", tenant_id=tenant.id, name=name))
+        db.session.commit()
+        room = db.session.get(Room, tenant.room_id)
+        reply(f"已連結：{room.name} {tenant.name}\n之後帳單和收款確認會用 LINE 傳給你。"
+              + ("" if name else "\n\n⚠ 請先把「租屋小幫手」加為好友，才收得到通知。"))
+        notify_landlords(f"【LINE 連結】{room.name} {tenant.name} 已連結 LINE"
+                         f"（LINE 名稱：{name or '未加好友'}）。\n若不是本人，請管理者到房間頁解除。",
+                         "tenant_link")
+        return
+    me = db.session.get(LineUser, uid)
+    if me and me.role == "tenant" and me.tenant and cmd in ("帳單", "查詢", "繳費", "金額"):
+        msg = tenant_bill_text(me.tenant, this_period(), "【目前未繳】")
+        reply(msg or "目前沒有未繳的費用，謝謝！\n\n" + TENANT_FOOTER)
+        return
+    if me and me.role == "tenant" and cmd not in ("綁定", "連結", "解除綁定", "解除連結"):
+        reply("這裡是租屋小幫手自動通知，房東看不到這裡的訊息。\n"
+              "金額有問題請私訊房東。\n\n"
+              "輸入「帳單」可以查看目前未繳的金額。\n"
+              f"查看與繳費：{site_url('tenant_login')}")
+        return
+    if cmd in ("綁定", "連結"):
+        reply("想用 LINE 收到自己的帳單，請打開租屋小幫手網頁，按「連結 LINE」。\n\n"
+              f"{site_url('tenant_login')}\n\n"
               "提醒：請不要把房間密碼傳給任何人。")
         return
     try:
@@ -1859,10 +2164,10 @@ def handle_line_event(ev):
             db.session.commit()
             reply("綁定碼不正確或已過期，請重新產生。")
         return
-    if cmd == "解除綁定":
+    if cmd in ("解除綁定", "解除連結"):
         n = LineUser.query.filter_by(user_id=uid).delete()
         db.session.commit()
-        reply("已解除綁定，不會再收到個人通知。" if n else "你目前沒有綁定。")
+        reply("已解除連結，不會再收到個人通知。" if n else "你目前沒有連結。")
         return
     reply(help_text())
 
@@ -1913,7 +2218,7 @@ def daily_job(today):
     if announce_day and today.day >= announce_day and not get_setting(mark) and line_groups():
         if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
                         f"{site_url('tenant_login')}"
-                        f"{announce_note()}\n"
+                        f"{pay_text()}\n"
                         "若您已完成繳費，請忽略此通知", "monthly_group"):
             set_setting(mark, "1")
             db.session.commit()
@@ -1939,6 +2244,10 @@ def daily_job(today):
         lines.append(f"・3 天內到期：{'、'.join(soon)}")
     if unbilled_soon:
         lines.append(f"・快到繳費日但還沒發繳費單：{'、'.join(unbilled_soon)}")
+    reqs = Tenant.query.filter(Tenant.active.is_(True), Tenant.moveout_req.isnot(None)).all()
+    if reqs:
+        lines.append("・退租申請待確認：" + "、".join(
+            f"{db.session.get(Room, t.room_id).name}（{t.moveout_req.month}/{t.moveout_req.day}）" for t in reqs))
     if lines:
         notify_landlords(f"【租屋小幫手・每日摘要 {today.month}/{today.day}】\n" + "\n".join(lines)
                          + f"\n\n{site_url('owner_home')}", "daily_summary")
@@ -1982,10 +2291,6 @@ def owner_admin():
                 set_setting("landlord_ver", str(int(get_setting("landlord_ver", "0")) + 1))
                 db.session.commit()
                 flash("已設定房東密碼，房東已登入的裝置需要重新登入。", "ok")
-        elif action == "announce_note":
-            set_setting("announce_note", f.get("note", "").strip()[:100])
-            db.session.commit()
-            flash("已更新公告附註。", "ok")
         elif action == "announce_day":
             d = to_int(f.get("day"), 5)
             set_setting("announce_day", str(d if 0 <= d <= 28 else 5))
@@ -1999,30 +2304,6 @@ def owner_admin():
             set_setting("pa_renewed_at", tw_today().isoformat())
             db.session.commit()
             flash("已記錄今天的延長日期，25 天後會提醒你。", "ok")
-        elif action == "pay_account":
-            set_setting("pay_bank", f.get("bank", "").strip()[:60])
-            set_setting("pay_account", f.get("account", "").strip()[:40])
-            set_setting("pay_note", f.get("note", "").strip()[:100])
-            db.session.commit()
-            flash("已更新繳費帳號。", "ok")
-        elif action == "pay_qr":
-            file = request.files.get("qr")
-            data = file.read(3 * 1024 * 1024 + 1) if file else b""
-            if not data:
-                flash("請選擇圖片檔。", "warn")
-            elif len(data) > 3 * 1024 * 1024:
-                flash("圖片請小於 3MB。", "warn")
-            elif not data[:8].startswith((b"\x89PNG", b"\xff\xd8")):
-                flash("只接受 PNG 或 JPG 圖片。", "warn")
-            else:
-                os.makedirs(os.path.dirname(PAY_QR_PATH), exist_ok=True)
-                with open(PAY_QR_PATH, "wb") as fh:
-                    fh.write(data)
-                flash("已更新繳費 QR code。", "ok")
-        elif action == "pay_qr_del":
-            if os.path.exists(PAY_QR_PATH):
-                os.remove(PAY_QR_PATH)
-            flash("已刪除繳費 QR code。", "ok")
         elif action == "unbind":
             LineUser.query.filter_by(user_id=f.get("uid", "")).delete()
             db.session.commit()
@@ -2067,7 +2348,7 @@ def owner_admin():
         cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES,
         renewed=get_setting("pa_renewed_at"), pay=pay_account(),
         announce_day=to_int(get_setting("announce_day", "5"), 5),
-        announce_note=get_setting("announce_note", "匯款請匯到富邦帳號"))
+        announce_note=get_setting("announce_note", ""))
 
 
 if __name__ == "__main__":

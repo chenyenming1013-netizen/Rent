@@ -83,6 +83,25 @@
 </div>
 
 {% if tenant %}
+<h2>LINE 連結</h2>
+<div class="panel">
+  {% for u in links %}
+  <div class="list-item list-head">
+    <span>{{ u.name or '（未加好友）' }}<span class="muted small">・{{ u.created_at.strftime('%Y/%m/%d') }} 連結</span>
+      {% if u.blocked %}<span class="pill late">已封鎖</span>{% endif %}</span>
+    {% if is_admin %}
+    <form method="post" onsubmit="return confirm('解除這個 LINE 的連結？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="unlink_line">
+      <input type="hidden" name="uid" value="{{ u.user_id }}">
+      <button class="btn link small">解除</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">尚未連結。請房客打開租屋小幫手網頁，按「連結 LINE」。</p>
+  {% endfor %}
+</div>
+
 <h2>未繳清的帳單項目</h2>
 <div class="panel">
   {% for i in open_items %}
@@ -191,10 +210,21 @@
   {% else %}<p class="muted" style="margin:0">還沒有紀錄。</p>{% endfor %}
 </div>
 
-{% if is_admin %}
-<h2>退租</h2>
+{% if is_admin or tenant.moveout_req %}
+<h2 id="moveout">退租</h2>
 <div class="panel">
-  <p class="muted small" style="margin-top:0">解除綁定後房間變回空房、自動換新密碼，繳費紀錄會保留。押金與最後一期租金請自行結算。</p>
+  {% if tenant.moveout_req %}
+  <div class="diff-box" style="margin:0 0 12px">
+    <strong>房客申請 {{ tenant.moveout_req.strftime('%Y/%m/%d') }} 退租</strong>
+    <span class="muted small">（{{ tenant.moveout_req_at.strftime('%m/%d %H:%M') }} 送出）</span>
+    {% if tenant.moveout_req_note %}<div class="small">備註：{{ tenant.moveout_req_note }}</div>{% endif %}
+    <form method="post" style="margin-top:8px" onsubmit="return confirm('退回這個退租申請？房客會收到通知。')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="reject_moveout">
+      <button class="btn small">退回申請</button>
+    </form>
+  </div>
+  {% endif %}
+  <p class="muted small" style="margin-top:0">確認退租後房間變回空房、自動換新密碼，繳費紀錄會保留；房客的 LINE 會收到告別訊息並自動解除連結。押金與最後一期租金請自行結算。</p>
   <form method="post" class="stack" onsubmit="return confirm('確定解除 {{ tenant.name }} 的綁定？')">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="moveout">
     {% set open_pos = open_items | selectattr('state','equalto','unpaid') | selectattr('amount','gt',0) | list %}
@@ -206,7 +236,7 @@
       <option value="keep">維持未繳，繼續追收</option>
     </select>
     {% endif %}
-    <button class="btn danger">解除綁定（退租）</button>
+    <button class="btn danger">{{ '確認退租' if tenant.moveout_req else '解除綁定（退租）' }}</button>
   </form>
 </div>
 {% endif %}

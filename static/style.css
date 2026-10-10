@@ -257,3 +257,12 @@ code{word-break:break-all}
 .pay-qr{display:block;width:190px;max-width:100%;height:auto;margin:10px 0;background:#fff;border-radius:8px;padding:6px}
 
 .owner-ok{background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal);border-radius:var(--r);padding:10px 14px;margin:0 0 10px;font-weight:700}
+.btn.line{background:#06C755;border-color:#06C755;color:#fff}
+.line-intro{border-color:#06C755;background:#EAF9F0}
+.line-intro strong{color:#05843A}
+.line-steps{margin:0;padding-left:22px}
+.line-steps li{margin:0 0 16px}
+.line-steps p{margin:2px 0 6px}
+.pill.line-on{background:#E3F6EA;color:#05843A}
+.pill.line-off{background:var(--bg);color:var(--soft)}
+.preview{white-space:pre-wrap;font-family:inherit;margin:0;font-size:14px;line-height:1.6;background:var(--bg);padding:12px;border-radius:var(--r)}

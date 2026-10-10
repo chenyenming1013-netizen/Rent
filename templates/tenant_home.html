@@ -14,6 +14,25 @@
 </div>
 {{ banner(room.name, tenant.name ~ '・每月 ' ~ tenant.due_day ~ ' 號繳租', house(room.color), room.color[2]) }}
 
+{% if tenant.moveout_req %}
+<div class="owner-ok" role="status">已申請 {{ tenant.moveout_req.month }}/{{ tenant.moveout_req.day }} 退租，等待房東確認。</div>
+{% endif %}
+{% if line_st == 'on' %}
+<p class="muted small" style="margin:0 0 4px">✓ LINE 已連結，帳單會用 LINE 傳給你。<a href="{{ url_for('tenant_line') }}">換一個 LINE</a></p>
+{% elif line_st == 'blocked' %}
+<div class="panel line-intro" style="margin-top:0">
+  <strong>你封鎖或刪除了租屋小幫手</strong>
+  <p class="small" style="margin:6px 0 0">重新加回好友就會自動恢復帳單通知，不用重新連結。</p>
+  <a class="btn line block" href="https://line.me/R/ti/p/{{ LINE_BASIC_ID|urlencode }}">加回好友</a>
+</div>
+{% else %}
+<div class="panel line-intro" style="margin-top:0">
+  <strong>連結 LINE，帳單直接傳給你</strong>
+  <p class="small" style="margin:6px 0 0">連結後，帳單金額和收款確認會用 LINE 傳給你。只要做一次，約 1 分鐘。</p>
+  <a class="btn line block" href="{{ url_for('tenant_line') }}">連結 LINE</a>
+</div>
+{% endif %}
+
 <h2>{{ month_label(period) }}繳費單</h2>
 {% macro item_row(i, carry=False) -%}
 <div class="bill-row">
@@ -112,4 +131,26 @@
   <p class="muted" style="margin:0">還沒有付款紀錄，繳費並通知房東後會出現在這裡。</p>
   {% endfor %}
 </div>
+<details class="plain" id="moveout" style="margin-top:20px">
+  <summary>申請退租</summary>
+  <div class="panel">
+  {% if tenant.moveout_req %}
+    <p style="margin-top:0">你已申請 <strong>{{ tenant.moveout_req.strftime('%Y/%m/%d') }}</strong> 退租{% if tenant.moveout_req_note %}（{{ tenant.moveout_req_note }}）{% endif %}，房東確認後才會正式退租。</p>
+    <form method="post" action="{{ url_for('tenant_moveout') }}" onsubmit="return confirm('取消退租申請？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="cancel">
+      <button class="btn block">取消退租申請</button>
+    </form>
+  {% else %}
+    <p class="muted small" style="margin-top:0">送出後會通知房東。房東和你結清押金、未繳費用後，才會正式退租；退租後租屋小幫手不會再傳通知給你。</p>
+    <form method="post" action="{{ url_for('tenant_moveout') }}" class="stack" onsubmit="return confirm('確定送出退租申請？')">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="request">
+      <label for="mo-date">希望退租日期</label>
+      <input id="mo-date" name="date" type="date" min="{{ today.isoformat() }}" required>
+      <label for="mo-note">備註（選填）</label>
+      <input id="mo-note" name="note" maxlength="200" placeholder="例如：押金退款帳號、搬家時間">
+      <button class="btn danger block">送出退租申請</button>
+    </form>
+  {% endif %}
+  </div>
+</details>
 {% endblock %}

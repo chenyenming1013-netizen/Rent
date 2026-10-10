@@ -43,7 +43,21 @@
 </div>
 {% endif %}
 
+{% if moveout_reqs %}
+<h2>退租申請（{{ moveout_reqs|length }} 筆）</h2>
+<div class="panel">
+  {% for t in moveout_reqs %}{% set rr = room_of(t) %}
+  <div class="list-item list-head">
+    <span><strong>{{ rr.name }}</strong> {{ t.name }}・希望 {{ t.moveout_req.strftime('%Y/%m/%d') }} 退租
+      {% if t.moveout_req_note %}<span class="muted small" style="display:block">備註：{{ t.moveout_req_note }}</span>{% endif %}</span>
+    <a class="btn small primary" href="{{ url_for('owner_room', rid=rr.id) }}#moveout">處理</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if pending %}
+
 <h2>待確認收款（{{ pending|length }} 筆）</h2>
 <div class="panel">
 {% for p in pending %}
@@ -88,7 +102,7 @@
   <div class="room-card" style="background:{{ c[0] }}2E;border-color:{{ c[0] }}">
     <div class="rc-top">
       <span class="rc-name">{{ r.name }}<span class="type">{{ r.room_type }}</span>
-        {% if t %}<span class="tenant-name">{{ t.name }}{% if not t.verified %} <span class="pill wait">新</span>{% endif %}{% if t.subsidy == '是' %} <span class="pill subsidy">租補</span>{% endif %}</span>
+        {% if t %}<span class="tenant-name">{{ t.name }}{% if not t.verified %} <span class="pill wait">新</span>{% endif %}{% if t.subsidy == '是' %} <span class="pill subsidy">租補</span>{% endif %}{% if linked.get(t.id) == 'on' %} <span class="pill line-on">LINE</span>{% elif linked.get(t.id) == 'blocked' %} <span class="pill late">LINE 已封鎖</span>{% else %} <span class="pill line-off">LINE 未連結</span>{% endif %}{% if t.moveout_req %} <span class="pill late">申請退租 {{ t.moveout_req.month }}/{{ t.moveout_req.day }}</span>{% endif %}</span>
         {% else %}<span class="tenant-name muted">未登記</span>{% endif %}</span>
     </div>
     <div class="st st-{{ s[1] }} st-block">
@@ -173,6 +187,11 @@
 <div class="panel">
   <p style="margin:0">台電公告電價：每度 <strong>{{ rate }}</strong> 元</p>
   <p class="muted small" style="margin:4px 0 0">在「發送繳費單」頁面修改，會同步顯示在房客的電費上。</p>
+  <div class="list-item list-head" style="margin-top:14px">
+    <span>繳費帳號：{{ pay_account.bank }} {{ pay_account.account or '尚未填寫' }}
+      <span class="muted small" style="display:block">公告和 LINE 帳單會自動帶入這個帳號</span></span>
+    <a class="btn small" href="{{ url_for('owner_pay_account') }}">修改</a>
+  </div>
   <div style="margin-top:14px">
     <label for="exp_year">匯出資料（CSV，可用 Excel 開啟）</label>
     <div class="confirm-form">

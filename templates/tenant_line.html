@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_art.html" import banner, house %}
+{% block title %}連結 LINE｜租屋小幫手{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('tenant_home') }}">← 回到我的房間</a>
+{{ banner('連結 LINE', room.name ~ '・' ~ tenant.name, house(room.color), room.color[2]) }}
+
+{% if links %}
+<div class="owner-ok" role="status">✓ 已經連結 {{ links|length }} 個 LINE（{{ links|map(attribute='name')|map('default','未加好友',true)|join('、') }}）。要換一個 LINE 再照下面做一次即可。</div>
+{% endif %}
+
+<div class="panel" style="margin-top:0">
+  <ol class="line-steps">
+    <li>
+      <strong>先加「租屋小幫手」為好友</strong>
+      <p class="muted small">已經是好友就跳過這步。</p>
+      <a class="btn small" href="{{ friend_url }}">加好友</a>
+    </li>
+    <li>
+      <strong>傳送連結碼</strong>
+      <p class="muted small">按下去會打開 LINE，訊息已經打好，按「傳送」就完成。</p>
+      <a class="btn line block" href="{{ send_url }}" style="margin-top:6px">打開 LINE 傳送連結碼</a>
+    </li>
+    <li>
+      <strong>看到回覆就完成了</strong>
+      <p class="muted small">租屋小幫手會回「已連結：{{ room.name }} {{ tenant.name }}」。</p>
+    </li>
+  </ol>
+  <div class="calc" style="margin-top:14px">
+    <div><span>連結碼（{{ minutes }} 分鐘內有效）</span><span style="letter-spacing:.15em;font-weight:700">{{ code }}</span></div>
+  </div>
+  <p class="muted small" style="margin:8px 0 0">按鈕打不開的話，請在租屋小幫手的聊天室自己輸入：<strong>連結 {{ code }}</strong></p>
+  <a class="btn block" href="{{ url_for('tenant_home') }}">我已經傳送了，回到我的房間</a>
+</div>
+<p class="muted small" style="margin-top:12px">連結碼只能用一次，別人拿到也沒用。連結資料只用於收租通知，退租後自動解除。</p>
+{% endblock %}
