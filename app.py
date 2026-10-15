@@ -2330,8 +2330,10 @@ def owner_admin():
             flash("已送出測試訊息。" if ok else "送出失敗，或尚未綁定管理者。", "ok" if ok else "warn")
         elif action == "run_daily":
             result = daily_job(tw_today())
-            flash(f"已執行每日檢查：提醒 {result['reminders']} 位房客。", "ok")
+            flash(f"已執行每日檢查：逾期 {len(result['late'])} 間、待確認收款 {result['pending']} 筆。", "ok")
         if action and not action.startswith("code_"):
+            if f.get("back") == "home":
+                return redirect(url_for("owner_home"))
             return redirect(url_for("owner_admin"))
 
     users = LineUser.query.order_by(LineUser.role, LineUser.created_at).all()

@@ -30,8 +30,14 @@
 </a>
 
 {% if is_admin and renew_days is not none and renew_days >= 25 %}
-<div class="flash warn">網站已經 {{ renew_days }} 天沒有延長，請登入 PythonAnywhere 按「Run until 1 month from today」。
-  <a href="https://www.pythonanywhere.com/user/cym1013/webapps/" target="_blank" rel="noopener">前往延長</a></div>
+<div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+  <span>網站已經 {{ renew_days }} 天沒有延長，請登入 PythonAnywhere 按「Run until 1 month from today」。
+    <a href="https://www.pythonanywhere.com/user/cym1013/webapps/" target="_blank" rel="noopener">前往延長</a></span>
+  <form method="post" action="{{ url_for('owner_admin') }}" onsubmit="return confirm('已經在 PythonAnywhere 按過延長了嗎？')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="renewed"><input type="hidden" name="back" value="home">
+    <button class="btn small primary">我已延長，記錄今天</button>
+  </form>
+</div>
 {% endif %}
 {% if login_locked %}
 <div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
