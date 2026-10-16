@@ -453,6 +453,10 @@ def migrate():
 def init_db():
     db.create_all()
     migrate()
+    if not get_setting("v35_group_off"):   # 房東要求：不再每月發全體公告，改逾期個別提醒
+        set_setting("announce_day", "0")
+        set_setting("v35_group_off", "1")
+        db.session.commit()
     if not Room.query.first():
         try:
             for i, (b, n, t) in enumerate(DEFAULT_ROOMS):
@@ -714,7 +718,7 @@ def line_state(tenant):
 TENANT_FOOTER = "金額有問題請私訊房東。\n（此為系統自動通知，房東看不到這裡的回覆）"
 
 
-def tenant_bill_text(tenant, period, title=None):
+def tenant_bill_text(tenant, period, title=None, due_line=None):
     """房客自己的帳單內容（未繳項目、合計、期限、帳號、連結）。沒有未繳時回傳 None。"""
     room = db.session.get(Room, tenant.room_id)
     items = [i for i in unpaid_items(tenant) if i.state == "unpaid" and i.amount]
@@ -732,9 +736,70 @@ def tenant_bill_text(tenant, period, title=None):
     pay = pay_text().strip()
     return (f"{title or '【' + month_label(period) + '份繳費單】'}{room.name} {tenant.name}\n"
             + "\n".join(lines)
-            + f"\n合計 {sum(i.amount for i in items):,} 元，請於 {due.month}/{due.day} 前繳納"
+            + f"\n合計 {sum(i.amount for i in items):,} 元，"
+            + (due_line or f"請於 {due.month}/{due.day} 前繳納")
             + (f"\n\n{pay}" if pay else "")
             + f"\n\n查看與繳費：{site_url('tenant_login')}\n{TENANT_FOOTER}")
+
+
+def overdue_info(tenant, today):
+    """最早一筆未繳項目的期限與逾期天數；沒有逾期回傳 None。"""
+    items = [i for i in unpaid_items(tenant) if i.state == "unpaid" and i.amount > 0]
+    if not items or sum(i.amount for i in unpaid_items(tenant) if i.state == "unpaid") <= 0:
+        return None
+    due = min(tenant.due_date(i.bill.period) for i in items)
+    late = (today - due).days
+    return (due, late) if late > 0 else None
+
+
+OVERDUE_MAX = 5          # 逾期提醒最多設定幾次
+OVERDUE_MAX_DAY = 90
+
+
+def parse_overdue_days(values):
+    out = []
+    for x in values:
+        n = to_int(str(x).strip(), 0)
+        if 1 <= n <= OVERDUE_MAX_DAY and n not in out:
+            out.append(n)
+    return sorted(out)[:OVERDUE_MAX]
+
+
+def overdue_days_setting():
+    """逾期第幾天要提醒（最多 5 次），例如 [1, 4]；空的＝不提醒。"""
+    return parse_overdue_days(get_setting("overdue_days", "1,4").replace("、", ",").split(","))
+
+
+def send_overdue_reminders(today):
+    """只提醒逾期未繳的房客本人，依各自的繳費期限。回傳 (已傳送, 未連結) 房間名單。"""
+    steps = overdue_days_setting()
+    sent, unlinked = [], []
+    if not steps:
+        return sent, unlinked
+    for room in Room.query.filter_by(active=True).order_by(Room.sort).all():
+        t = room.tenant
+        info = overdue_info(t, today) if t else None
+        if not info:
+            continue
+        due, late = info
+        reached = [d for d in steps if late >= d]
+        if not reached:
+            continue
+        step = reached[-1]                       # 排程漏跑時只補發最近的一次
+        mark = f"overdue_{t.id}_{due.isoformat()}_{step}"
+        if get_setting(mark):
+            continue
+        if line_state(t) != "on":
+            set_setting(mark, "skip")
+            unlinked.append(room.name)
+            continue
+        msg = tenant_bill_text(t, today.strftime("%Y-%m"), "【逾期提醒】",
+                               f"繳費期限 {due.month}/{due.day} 已過 {late} 天，請盡快繳納")
+        if msg and notify_tenant(t, msg, "tenant_overdue"):
+            set_setting(mark, "1")
+            sent.append(room.name)
+    db.session.commit()
+    return sent, unlinked
 
 
 def farewell_tenant(tenant):
@@ -1933,6 +1998,12 @@ def owner_pay_account():
             set_setting("announce_note", f.get("announce_note", "").strip()[:100])
             db.session.commit()
             flash("已更新繳費帳號，之後的公告和帳單會用新的帳號。", "ok")
+        elif action == "overdue":
+            days = parse_overdue_days(f.getlist("day"))
+            set_setting("overdue_days", ",".join(map(str, days)))
+            db.session.commit()
+            flash("已更新逾期提醒：逾期第 " + "、".join(map(str, days)) + " 天各提醒一次。" if days
+                  else "已關閉逾期提醒。", "ok")
         elif action == "pay_qr":
             file = request.files.get("qr")
             data = file.read(3 * 1024 * 1024 + 1) if file else b""
@@ -1956,6 +2027,8 @@ def owner_pay_account():
     preview = (f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
                f"{site_url('tenant_login')}{pay_text()}\n若您已完成繳費，請忽略此通知")
     return render_template("owner_pay_account.html", pay=pay_account(), preview=preview,
+                           overdue_days=overdue_days_setting(), overdue_max=OVERDUE_MAX,
+                           overdue_max_day=OVERDUE_MAX_DAY,
                            announce_note=get_setting("announce_note", ""))
 
 
@@ -2212,8 +2285,11 @@ def daily_job(today):
         elif 0 <= days <= 3:
             soon.append(room.name)
 
-    # 每月指定日期，在所有群組發一次繳費提醒
-    announce_day = to_int(get_setting("announce_day", "5"), 5)
+    # 逾期未繳：只私訊房客本人（依各自期限）
+    od_sent, od_unlinked = send_overdue_reminders(today)
+
+    # 每月指定日期在群組發提醒（預設關閉；房東只要逾期個別提醒）
+    announce_day = to_int(get_setting("announce_day", "0"), 0)
     mark = f"monthly_announce_{period}"
     if announce_day and today.day >= announce_day and not get_setting(mark) and line_groups():
         if notify_group(f"{month_label(period)}份繳費單(含電費)已發出，請打開連結查看並繳費\n"
@@ -2240,6 +2316,10 @@ def daily_job(today):
         lines.append(f"・待確認收款 {pending} 筆")
     if late_rooms:
         lines.append(f"・逾期未繳：{'、'.join(late_rooms)}")
+    if od_sent:
+        lines.append(f"・今天已用 LINE 提醒逾期：{'、'.join(od_sent)}")
+    if od_unlinked:
+        lines.append(f"・逾期但未連結 LINE，請自行提醒：{'、'.join(od_unlinked)}")
     if soon:
         lines.append(f"・3 天內到期：{'、'.join(soon)}")
     if unbilled_soon:
@@ -2252,7 +2332,7 @@ def daily_job(today):
         notify_landlords(f"【租屋小幫手・每日摘要 {today.month}/{today.day}】\n" + "\n".join(lines)
                          + f"\n\n{site_url('owner_home')}", "daily_summary")
     return {"soon": soon, "late": late_rooms, "pending": pending,
-            "unbilled_soon": unbilled_soon}
+            "unbilled_soon": unbilled_soon, "overdue_sent": od_sent, "overdue_unlinked": od_unlinked}
 
 
 @app.route("/cron/daily")
@@ -2349,7 +2429,7 @@ def owner_admin():
         cron_url=(site_url("cron_daily") + "?key=" + CRON_KEY) if CRON_KEY else "",
         cron_last=cron_last, cron_stale=cron_stale, minutes=BIND_CODE_MINUTES,
         renewed=get_setting("pa_renewed_at"), pay=pay_account(),
-        announce_day=to_int(get_setting("announce_day", "5"), 5),
+        announce_day=to_int(get_setting("announce_day", "0"), 0),
         announce_note=get_setting("announce_note", ""))
 
 

@@ -121,7 +121,7 @@
 
 <h2>每月群組提醒</h2>
 <div class="panel">
-  <p class="muted small" style="margin-top:0">每個月指定的那一天，系統會自動在所有公告群組發一則「繳費單已發出」的提醒（不含房號與金額），每月只發一次。填 0 表示不發。需要下方的每日排程已設定才會運作。</p>
+  <p class="muted small" style="margin-top:0">目前已關閉（填 0）：房東改用「逾期提醒」只私訊逾期未繳的房客。需要時才填日期，系統會在那天於所有群組發一則「繳費單已發出」。需要下方的每日排程已設定才會運作。</p>
   <p class="small" style="margin:0 0 14px">公告裡的匯款帳號和附註在 <a href="{{ url_for('owner_pay_account') }}">繳費帳號</a> 頁修改。</p>
   <form method="post" class="confirm-form" style="margin:0">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="announce_day">

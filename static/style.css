@@ -266,3 +266,7 @@ code{word-break:break-all}
 .pill.line-on{background:#E3F6EA;color:#05843A}
 .pill.line-off{background:var(--bg);color:var(--soft)}
 .preview{white-space:pre-wrap;font-family:inherit;margin:0;font-size:14px;line-height:1.6;background:var(--bg);padding:12px;border-radius:var(--r)}
+.od-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:6px 0}
+.od-cell{display:flex;flex-direction:column;gap:4px;font-size:14px;background:var(--bg);border-radius:var(--r);padding:8px 10px}
+.od-in{display:flex;align-items:center;gap:6px}
+.od-in input{width:64px;height:38px;padding:0 8px}

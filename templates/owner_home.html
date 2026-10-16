@@ -198,6 +198,11 @@
       <span class="muted small" style="display:block">公告和 LINE 帳單會自動帶入這個帳號</span></span>
     <a class="btn small" href="{{ url_for('owner_pay_account') }}">修改</a>
   </div>
+  <div class="list-item list-head">
+    <span>逾期提醒：只私訊逾期未繳的房客
+      <span class="muted small" style="display:block">依每人的繳費期限，不再發全體公告</span></span>
+    <a class="btn small" href="{{ url_for('owner_pay_account') }}#overdue">設定</a>
+  </div>
   <div style="margin-top:14px">
     <label for="exp_year">匯出資料（CSV，可用 Excel 開啟）</label>
     <div class="confirm-form">
